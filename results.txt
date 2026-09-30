@@ -1,7 +1,0 @@
- M "Database Demo.xcodeproj/project.pbxproj"
- M "Database Demo.xcodeproj/xcuserdata/jmreina.xcuserdatad/xcschemes/xcschememanagement.plist"
- M "Database Demo/ContentView.swift"
-?? "Database Demo.code-workspace"
-?? "Database Demo/readme.txt"
-?? results.txt
-?? server/
