@@ -4,7 +4,7 @@ Native SwiftUI app testing a PHP endpoint on Bluehost
 
 ## Server setup
 
-Upload server/health.php to public_html/plenact/api-dev/health.php
+Upload Server/health.php to public_html/plenact/api-dev/health.php
 
 The endpoint is intentionally public and returns fixed JSON. It contains no credentials and does not access the database
 
