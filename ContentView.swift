@@ -1,12 +1,12 @@
 // -------------------------------------------------------------------------------------------------
 // @file       ContentView.swift
-// @brief      Display and exercise the public Plenact health endpoint
-// @details    Decode the JSON response and present request progress, success, or failure
+// @brief      Manage the app token and exercise the public Plenact health endpoint
+// @details    Store credentials in Keychain and present health-request feedback
 //
 // @notes      This foreground test does not authenticate or access database records
 //
 // @section    Opens
-//      Authenticated configuration retrieval and token-entry UI are not integrated yet
+//      Authenticated configuration retrieval is not integrated yet
 //
 // -------------------------------------------------------------------------------------------------
 import SwiftUI
@@ -40,8 +40,11 @@ private struct HealthResponse: Decodable {
 @MainActor
 struct ContentView: View {
 
-    @State private var result    = "Ready to test."  /* Latest request feedback */
-    @State private var isLoading = false             /* Request-in-progress flag */
+    @State private var result       = "Ready to test."  /* Latest request feedback              */
+    @State private var isLoading    = false             /* Request-in-progress flag             */
+    @State private var tokenInput   = ""                /* Token being entered, never logged    */
+    @State private var tokenMessage = ""                /* Keychain operation feedback          */
+    @State private var tokenIsStored: Bool?             /* nil means Keychain status is unknown */
 
     ///
     /// @fcn        ContentView.body
@@ -56,6 +59,45 @@ struct ContentView: View {
             
             Text("Plenact API Test")
                 .font(.title)
+
+            GroupBox("App Token") {
+
+                VStack(alignment: .leading, spacing: 12) {
+
+                    SecureField("64-character app token", text: $tokenInput)
+                        .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    if !tokenInput.isEmpty && !tokenInputIsValid {
+
+                        Text("Enter exactly 64 ASCII letters or digits.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack {
+
+                        Button("Save Token", action: saveToken)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!tokenInputIsValid)
+
+                        Button("Delete Token", role: .destructive, action: deleteToken)
+                            .disabled(tokenIsStored != true)
+                    }
+
+                    Text(tokenStatusMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    if !tokenMessage.isEmpty {
+
+                        Text(tokenMessage)
+                            .font(.footnote)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
 
             Button("Test API") {
                 Task {
@@ -74,7 +116,99 @@ struct ContentView: View {
                 .textSelection(.enabled)
         }
         .padding()
+        .onAppear(perform: loadTokenStatus)
     }
+
+
+    ///
+    /// @brief      Check token format without converting or normalizing its contents
+    /// @return     (Bool) true only for 64 ASCII alphanumeric bytes
+    ///
+    private var tokenInputIsValid: Bool {
+
+        let tokenBytes = tokenInput.utf8
+
+        return tokenBytes.count == 64 && tokenBytes.allSatisfy { byte in
+            (48...57).contains(byte)
+                || (65...90).contains(byte)
+                || (97...122).contains(byte)
+        }
+    }
+
+
+    ///
+    /// @brief      Describe whether a token is stored without revealing its value
+    /// @return     (String) non-sensitive Keychain status for the token panel
+    ///
+    private var tokenStatusMessage: String {
+
+        guard let tokenIsStored else {
+            return "Keychain status unavailable."
+        }
+
+        return tokenIsStored
+            ? "Token is stored in Keychain. Server validation has not been performed."
+            : "No token is stored in Keychain."
+    }
+
+
+    ///
+    /// @brief      Read only whether a token exists; never place it in the field
+    /// @post       tokenIsStored is true, false, or nil when Keychain access fails
+    ///
+    private func loadTokenStatus() {
+
+        do {
+            tokenIsStored = try TokenStore.load() != nil
+            tokenMessage  = ""
+        } catch {
+            tokenIsStored = nil
+            tokenMessage  = "Could not read Keychain status: \(error.localizedDescription)"
+        }
+    }
+
+
+    ///
+    /// @brief      Save a format-checked app token to Keychain
+    /// @note       Local storage does not validate the token with the server
+    ///
+    private func saveToken() {
+
+        guard tokenInputIsValid else {
+
+            tokenMessage = "Enter exactly 64 ASCII letters or digits."
+
+            return
+        }
+
+        do {
+            try TokenStore.save(tokenInput)
+            
+            tokenInput    = ""
+            tokenIsStored = true
+            tokenMessage  = "Token saved to Keychain. Server validation has not been performed."
+        } catch {
+            tokenMessage  = "Could not save token: \(error.localizedDescription)"
+        }
+    }
+
+
+    ///
+    /// @brief      Delete the stored app token from Keychain
+    ///
+    private func deleteToken() {
+
+        do {
+            try TokenStore.delete()
+
+            tokenIsStored = false
+            tokenMessage  = "Stored token deleted from Keychain."
+
+        } catch {
+            tokenMessage = "Could not delete token: \(error.localizedDescription)"
+        }
+    }
+
 
     ///
     /// @fcn        ContentView.testAPI

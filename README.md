@@ -5,7 +5,7 @@ A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS
 ## Current progress
 
 - The app performs a foreground, user-triggered health check with loading feedback and error handling.
-- `TokenStore.swift` provides Keychain save, load, and delete operations. Token-entry UI and authenticated app requests are still pending.
+- `TokenStore.swift` provides Keychain save, load, and delete operations. The app now has secure token entry, local format validation, Keychain save/delete controls, and a stored-token indicator. Saving does not validate the token with the server; authenticated app requests are still pending.
 - The deployed server has a public health endpoint and app-token-protected authentication and database-bootstrap endpoints.
 - The database schema and initial configuration/notice data have been created and verified.
 - Installation-status uploads and a separate reader endpoint are still pending.
@@ -97,4 +97,4 @@ Bootstrap returned:
 
 ## Next milestone
 
-Add secure token entry, format validation, Keychain save/delete controls, and a stored-token indicator. Verify persistence after relaunch and absence after deletion. Then integrate authenticated bootstrap retrieval and display the configuration and optional notice, with clear handling of authentication, server, connectivity, and decoding failures.
+Verify token persistence after relaunch and removal after deletion. Then integrate authenticated bootstrap retrieval and display the configuration and optional notice, with clear handling of authentication, server, connectivity, and decoding failures. After bootstrap, design a separate app-token-protected write endpoint and dedicated table for Favorite Food and positive #Cats values, keyed by installation and updated on each submission. Keep these preferences separate from `installation_status`.
