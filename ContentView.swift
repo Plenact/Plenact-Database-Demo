@@ -62,6 +62,13 @@ private struct BootstrapNotice: Decodable {
     let message: String     /* Notice message text */
 }
 
+private enum TokenValidationStatus {
+    case notChecked         /* Token validation has not been performed yet  */
+    case accepted           /* Token has been accepted by the server        */
+    case rejected           /* Token has been rejected by the server        */
+    case forbidden          /* Token is forbidden from accessing the server */
+}
+
 
 // --------------------------------------- MARK: - View ----------------------------------------- //
 
@@ -76,14 +83,20 @@ private struct BootstrapNotice: Decodable {
 @MainActor
 struct ContentView: View {
 
+    // Variables
     @State private var result          = "Ready to test."               /* Latest request feedback              */
     @State private var isLoading       = false                          /* Request-in-progress flag             */
     @State private var tokenInput      = ""                             /* Token being entered, never logged    */
     @State private var tokenMessage    = ""                             /* Keychain operation feedback          */
     @State private var bootstrapResult = "Database data not loaded."    /* Latest bootstrap response feedback   */
 
-    @State private var tokenIsStored: Bool?                             /* nil means Keychain status is unknown */
-    @State private var bootstrapData: BootstrapResponse?
+    // View State
+    @State private var tokenIsStored: Bool?              = nil                                  /* nil means Keychain status is unknown  */
+    @State private var tokenValidationStatus             = TokenValidationStatus.notChecked     /* Initial token validation status       */
+    @State private var bootstrapData: BootstrapResponse? = nil                                  /* Latest bootstrap response             */
+
+    // Focus State
+    @FocusState private var isTokenFieldFocused: Bool                                          /* Focus state for the token input field */
 
 
     ///
@@ -108,6 +121,7 @@ struct ContentView: View {
                         .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .focused($isTokenFieldFocused)
 
                     if !tokenInput.isEmpty && !tokenInputIsValid {
 
@@ -196,6 +210,17 @@ struct ContentView: View {
             }
         }
         .padding()
+        .toolbar {
+
+            ToolbarItemGroup(placement: .keyboard) {
+
+                Spacer()
+
+                Button("Done") {
+                    isTokenFieldFocused = false
+                }
+            }
+        }
         .onAppear(perform: loadTokenStatus)
     }
 
@@ -238,9 +263,24 @@ struct ContentView: View {
             return "Keychain status unavailable."
         }
 
-        return tokenIsStored
-            ? "Token is stored in Keychain. Server validation has not been performed."
-            : "No token is stored in Keychain."
+        guard tokenIsStored else {
+            return "No token is stored in Keychain."
+        }
+
+        switch tokenValidationStatus {
+
+            case .notChecked:
+                return "Token is stored in Keychain. Server validation has not been performed this session."
+
+            case .accepted:
+                return "Token is stored in Keychain. The server accepted it for bootstrap."
+
+            case .rejected:
+                return "Token is stored in Keychain, but the server rejected it (HTTP 401)."
+
+            case .forbidden:
+                return "Token is stored in Keychain, but it lacks app access (HTTP 403)."
+        }
     }
 
 
@@ -251,11 +291,13 @@ struct ContentView: View {
     private func loadTokenStatus() {
 
         do {
-            tokenIsStored = try TokenStore.load() != nil
-            tokenMessage  = ""
+            tokenIsStored         = try TokenStore.load() != nil
+            tokenValidationStatus = .notChecked
+            tokenMessage          = ""
         } catch {
-            tokenIsStored = nil
-            tokenMessage  = "Could not read Keychain status: \(error.localizedDescription)"
+            tokenIsStored         = nil
+            tokenValidationStatus = .notChecked
+            tokenMessage          = "Could not read Keychain status: \(error.localizedDescription)"
         }
     }
 
@@ -276,11 +318,12 @@ struct ContentView: View {
         do {
             try TokenStore.save(tokenInput)
             
-            tokenInput    = ""
-            tokenIsStored = true
-            tokenMessage  = "Token saved to Keychain. Server validation has not been performed."
+            tokenInput            = ""
+            tokenIsStored         = true
+            tokenValidationStatus = .notChecked
+            tokenMessage          = "Token saved to Keychain."
         } catch {
-            tokenMessage  = "Could not save token: \(error.localizedDescription)"
+            tokenMessage          = "Could not save token: \(error.localizedDescription)"
         }
     }
 
@@ -293,11 +336,12 @@ struct ContentView: View {
         do {
             try TokenStore.delete()
 
-            tokenIsStored = false
-            tokenMessage  = "Stored token deleted from Keychain."
+            tokenIsStored         = false
+            tokenValidationStatus = .notChecked
+            tokenMessage          = "Stored token deleted from Keychain."
 
         } catch {
-            tokenMessage = "Could not delete token: \(error.localizedDescription)"
+            tokenMessage          = "Could not delete token: \(error.localizedDescription)"
         }
     }
 
@@ -375,22 +419,25 @@ struct ContentView: View {
 
             switch httpResponse.statusCode {
 
-                case 200:
+                case 200:                                               /* HTTP 200: OK */
+                    tokenValidationStatus = .accepted
                     break
 
-                case 401:
+                case 401:                                               /* HTTP 401: Unauthorized */                    
 
+                    tokenValidationStatus = .rejected
                     bootstrapResult = "Authentication failed (HTTP 401). The stored app token was rejected."
                     
                     return
 
-                case 403:
+                case 403:                                               /* HTTP 403: Forbidden */
 
+                    tokenValidationStatus = .forbidden
                     bootstrapResult = "Access denied (HTTP 403). This endpoint requires the app token."
                     
                     return
 
-                case 500...599:
+                case 500...599:                                         /* HTTP 5xx: Server Error */
 
                     bootstrapResult = "Server error (HTTP \(httpResponse.statusCode)). Try again later."
                     
