@@ -22,15 +22,15 @@ declare(strict_types=1);
 
 ini_set('display_errors', '0');
 
-const JSON_DECODE_DEPTH            = 512;                                   /* Maximum depth for JSON decoding                               */
-const API_TOKEN_PATTERN            = '/\A[A-Za-z0-9]{64}\z/';               /* Exact 64-character alphanumeric API token                     */ 
-const BEARER_TOKEN_PATTERN         = '/\ABearer ([A-Za-z0-9]{64})\z/i';     /* Bearer token format for Authorization header                  */
-const MAX_REQUEST_BODY_BYTES       = 8192;                                  /* Maximum allowed size of the request body in bytes             */
-const MAX_FAVORITE_FOOD_CODEPOINTS = 255;                                   /* Maximum number of Unicode code points for favorite food       */
-const MIN_CAT_COUNT                = 1;                                     /* Minimum allowed cat count                                     */
-const MAX_CAT_COUNT                = 4_294_967_295;                         /* Maximum allowed cat count                                     */
-const PRIVATE_DIRECTORY_LEVELS     = 3;                                     /* Number of directory levels to reach the private configuration */
-const DATABASE_TIMEOUT_SECONDS     = 5;                                     /* Database connection timeout in seconds                        */
+const JSON_DECODE_DEPTH            = 512; /* JSON nesting limit                               */
+const API_TOKEN_PATTERN            = '/\A[A-Za-z0-9]{64}\z/'; /* 64-character token pattern                     */
+const BEARER_TOKEN_PATTERN         = '/\ABearer ([A-Za-z0-9]{64})\z/i'; /* Bearer header pattern                  */
+const MAX_REQUEST_BODY_BYTES       = 8192; /* Maximum request body size             */
+const MAX_FAVORITE_FOOD_CODEPOINTS = 255; /* Maximum food-name code points       */
+const MIN_CAT_COUNT                = 1; /* Minimum cat count                                     */
+const MAX_CAT_COUNT                = 4_294_967_295; /* Maximum cat count                                     */
+const PRIVATE_DIRECTORY_LEVELS     = 3; /* Private configuration path depth */
+const DATABASE_TIMEOUT_SECONDS     = 5; /* Database timeout seconds                        */
 
 
 // -------------------------------------- MARK: - Response Helper ------------------------------- //

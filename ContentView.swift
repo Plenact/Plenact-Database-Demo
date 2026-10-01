@@ -37,6 +37,7 @@ private struct BootstrapResponse: Decodable {
 
     let configuration: AppConfiguration
     let notice:        BootstrapNotice?
+    let preferences:   PreferencesSubmission?
 }
 
 ///
@@ -64,9 +65,9 @@ private struct BootstrapNotice: Decodable {
 
 
 ///
-/// Preferences sent to preferences.php
+/// Preferences sent to preferences.php and read from bootstrap.php
 ///
-private struct PreferencesSubmission: Encodable, Equatable {
+private struct PreferencesSubmission: Codable, Equatable {
 
     let favoriteFood: String        /* User's favorite food             */
     let catCount:     Int           /* Number of cats owned by the user */
@@ -128,12 +129,13 @@ struct ContentView: View {
     @State private var bootstrapResult   = "Database data not loaded."    /* Latest bootstrap response feedback     */
     @State private var favoriteFoodInput = ""                             /* User's favorite food input field       */
     @State private var catCountInput     = ""                             /* User's cat count input field           */
-    @State private var preferencesResult = "No preferences submitted."    /* Latest preferences submission feedback */
+    @State private var preferencesResult = "Preferences not loaded."     /* Latest preferences feedback           */
 
     // View State
     @State private var tokenIsStored: Bool?              = nil                                  /* nil means Keychain status is unknown  */
     @State private var tokenValidationStatus             = TokenValidationStatus.notChecked     /* Initial token validation status       */
     @State private var bootstrapData: BootstrapResponse? = nil                                  /* Latest bootstrap response             */
+    @State private var savedPreferences: PreferencesSubmission? = nil                           /* Last preferences loaded or saved       */
 
     // Focus State
     @FocusState private var focusedField: ContentField?                                        /* Currently focused input field         */
@@ -262,7 +264,7 @@ struct ContentView: View {
                             .textInputAutocapitalization(.words)
                             .focused($focusedField, equals: .favoriteFood)
                             .onChange(of: favoriteFoodInput) { _, _ in
-                                preferencesResult = "Unsaved changes."
+                                updatePreferencesEditStatus()
                             }
                     }
 
@@ -282,7 +284,7 @@ struct ContentView: View {
                             .keyboardType(.numberPad)
                             .focused($focusedField, equals: .catCount)
                             .onChange(of: catCountInput) { _, _ in
-                                preferencesResult = "Unsaved changes."
+                                updatePreferencesEditStatus()
                             }
                     }
 
@@ -399,6 +401,26 @@ struct ContentView: View {
 
         // Validate that both the favorite food and cat count inputs meet their respective criteria before allowing submission
         favoriteFoodIsValid && catCountValue != nil
+    }
+
+
+    ///
+    /// @brief      Keep preference feedback consistent with the last server state
+    /// @details    Programmatic loads match the baseline; user edits differ from it
+    ///
+    private func updatePreferencesEditStatus() {
+
+        if let savedPreferences,
+           favoriteFoodValue == savedPreferences.favoriteFood,
+           catCountValue == savedPreferences.catCount {
+            preferencesResult = "Preferences loaded from the database."
+        } else if savedPreferences == nil
+                    && favoriteFoodInput.isEmpty
+                    && catCountInput.isEmpty {
+            preferencesResult = "No saved preferences for this installation."
+        } else {
+            preferencesResult = "Unsaved changes."
+        }
     }
 
 
@@ -590,6 +612,7 @@ struct ContentView: View {
                     }
 
                     preferencesResult = "Preferences saved to the database for this installation."
+                    savedPreferences = submission
 
                 case 401:                                           /* Unauthorized */
                     tokenValidationStatus = .rejected
@@ -738,7 +761,25 @@ struct ContentView: View {
 
             }
 
-            bootstrapData   = try JSONDecoder().decode(BootstrapResponse.self, from: data)
+            let loadedData = try JSONDecoder().decode(BootstrapResponse.self, from: data)
+
+            bootstrapData = loadedData
+
+            if let preferences = loadedData.preferences {
+
+                savedPreferences  = preferences                                     /* Save the loaded preferences            */
+                favoriteFoodInput = preferences.favoriteFood                        /* Populate the favorite food input field */
+                catCountInput     = String(preferences.catCount)                    /* Populate the cat count input field     */
+                preferencesResult = "Preferences loaded from the database."
+
+            } else {
+
+                savedPreferences  = nil                                             /* Clear the saved preferences            */
+                favoriteFoodInput = ""                                              /* Clear the favorite food input field    */                   
+                catCountInput     = ""                                              /* Clear the cat count input field        */
+                preferencesResult = "No saved preferences for this installation."   /* Clear the preferences input fields     */
+            }
+
             bootstrapResult = "Database data loaded successfully."
 
         } catch is DecodingError {

@@ -6,7 +6,7 @@ A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS
 
 - The app performs a foreground, user-triggered health check with loading feedback and error handling.
 - `TokenStore.swift` provides Keychain save, load, and delete operations. The app has secure token entry, local format validation, Keychain save/delete controls, and a stored-token indicator. Authenticated bootstrap retrieval has successfully displayed the live database configuration and notice on an iPhone. Saving a token does not validate it with the server.
-- The app now includes Favorite Food and #Cats fields with validation and an authenticated save request. The new write endpoint and schema migration are local source only; deployment, migration application, and end-to-end write verification remain pending.
+- The app includes Favorite Food and #Cats fields with validation and an authenticated save request. The migration and write endpoint have been deployed, and a save succeeded in both the Simulator and on a physical iPhone. Local `bootstrap.php` now also reads the optional preferences row; this readback change still needs to be deployed.
 - The deployed server has a public health endpoint and app-token-protected authentication and database-bootstrap endpoints.
 - The database schema and initial configuration/notice data have been created and verified.
 - Installation-status uploads and a separate reader endpoint are still pending.
@@ -32,12 +32,12 @@ Deploy the scripts from `Server/api-dev/` to `/home2/justirl2/public_html/plenac
 | --- | --- | --- |
 | `health.php` | Fixed service-health response | Public |
 | `auth-check.php` | Verify app-role authentication | App token |
-| `bootstrap.php` | Fetch welcome configuration and latest active notice | App token |
-| `preferences.php` | Save the latest preferences for this installation | App token, POST; local source only |
+| `bootstrap.php` | Fetch configuration, notice, and optional preferences for this installation | App token; preferences read pending redeploy |
+| `preferences.php` | Save the latest preferences for this installation | App token, POST |
 
 The duplicate `Server/health.php` is an earlier baseline copy; use `Server/api-dev/health.php` for deployment.
 
-The server uses PHP 8.2 and Percona 5.7 (MySQL 5.7 compatible). The database user has SELECT, INSERT, and UPDATE privileges. Run schema changes through a separate administrative workflow. `Server/001_initial.sql` was already applied; do not rerun it against the existing database. `Server/002_installation_preferences.sql` is a new additive migration and has not yet been applied. Database timestamps represent UTC.
+The server uses PHP 8.2 and Percona 5.7 (MySQL 5.7 compatible). The database user has SELECT, INSERT, and UPDATE privileges. Run schema changes through a separate administrative workflow. `Server/001_initial.sql` was already applied; do not rerun it against the existing database. The additive `Server/002_installation_preferences.sql` migration has been applied once to the development database; do not rerun it. Database timestamps represent UTC.
 
 The PHP scripts resolve private configuration relative to their deployed directory. Local `Server/` is a deployment reference, not a runnable mirror of the hosting directory layout.
 
@@ -99,6 +99,8 @@ Bootstrap returned:
 
 `notice` may be null when no active notice exists.
 
+The local `bootstrap.php` source now also returns `preferences`: either `null` when no row exists or an object containing `favorite_food` and `cat_count`. Deploy the updated endpoint before expecting **Load Database Data** to populate the preference fields on a device.
+
 ## Next milestone
 
-Review `Server/002_installation_preferences.sql` and `Server/api-dev/preferences.php`, then apply the migration once through the separate schema-administration workflow and deploy the endpoint to the development API directory. The app sends `favorite_food` and positive-integer `cat_count`; the server takes `installation_id` from private configuration and upserts one row per installation. Verify a successful save, then submit changed values and confirm the same row updates. Keep these preferences separate from `installation_status`. A separate restricted reader endpoint remains future work.
+Deploy the updated `Server/api-dev/bootstrap.php` to the development API directory. Then press **Load Database Data** on the Simulator and physical iPhone and confirm saved Favorite Food/#Cats values populate. If no row exists, the fields should clear and report no saved preferences. The write path has already succeeded on both devices; verify that a second submission updates the same row. Keep these preferences separate from `installation_status`. A separate restricted reader endpoint remains future work.
