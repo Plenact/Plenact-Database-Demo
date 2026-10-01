@@ -5,7 +5,8 @@ A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS
 ## Current progress
 
 - The app performs a foreground, user-triggered health check with loading feedback and error handling.
-- `TokenStore.swift` provides Keychain save, load, and delete operations. The app has secure token entry, local format validation, Keychain save/delete controls, and a stored-token indicator. It now also includes authenticated bootstrap retrieval and displays the configuration plus an optional notice. Saving a token does not validate it with the server; the app-level bootstrap request still needs an Xcode runtime test with a rotated app token.
+- `TokenStore.swift` provides Keychain save, load, and delete operations. The app has secure token entry, local format validation, Keychain save/delete controls, and a stored-token indicator. Authenticated bootstrap retrieval has successfully displayed the live database configuration and notice on an iPhone. Saving a token does not validate it with the server.
+- The app now includes Favorite Food and #Cats fields with validation and an authenticated save request. The new write endpoint and schema migration are local source only; deployment, migration application, and end-to-end write verification remain pending.
 - The deployed server has a public health endpoint and app-token-protected authentication and database-bootstrap endpoints.
 - The database schema and initial configuration/notice data have been created and verified.
 - Installation-status uploads and a separate reader endpoint are still pending.
@@ -17,6 +18,7 @@ A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS
 3. Select an iPhone simulator or connected iPhone, then run.
 4. Tap **Test API**.
 5. Store the app token in Keychain, then tap **Load Database Data** to request the bootstrap response.
+6. After applying the preferences migration and deploying its endpoint, enter Favorite Food and a positive #Cats count, then tap **Save Preferences**.
 
 The `AppIcon` asset is configured for Debug and Release. App credentials will be entered at runtime and stored in Keychain; do not embed them in source or the app bundle.
 
@@ -31,10 +33,11 @@ Deploy the scripts from `Server/api-dev/` to `/home2/justirl2/public_html/plenac
 | `health.php` | Fixed service-health response | Public |
 | `auth-check.php` | Verify app-role authentication | App token |
 | `bootstrap.php` | Fetch welcome configuration and latest active notice | App token |
+| `preferences.php` | Save the latest preferences for this installation | App token, POST; local source only |
 
 The duplicate `Server/health.php` is an earlier baseline copy; use `Server/api-dev/health.php` for deployment.
 
-The server uses PHP 8.2 and Percona 5.7 (MySQL 5.7 compatible). The database user has SELECT, INSERT, and UPDATE privileges. Run schema changes through a separate administrative workflow. `Server/001_initial.sql` was already applied; do not rerun it against the existing database. Database timestamps represent UTC.
+The server uses PHP 8.2 and Percona 5.7 (MySQL 5.7 compatible). The database user has SELECT, INSERT, and UPDATE privileges. Run schema changes through a separate administrative workflow. `Server/001_initial.sql` was already applied; do not rerun it against the existing database. `Server/002_installation_preferences.sql` is a new additive migration and has not yet been applied. Database timestamps represent UTC.
 
 The PHP scripts resolve private configuration relative to their deployed directory. Local `Server/` is a deployment reference, not a runnable mirror of the hosting directory layout.
 
@@ -98,4 +101,4 @@ Bootstrap returned:
 
 ## Next milestone
 
-Verify the app's bootstrap request in Xcode with the rotated app token. Check that configuration and an optional notice display, and that authentication, authorization, server, connectivity, and decoding failures remain clear. After bootstrap verification, design a separate app-token-protected write endpoint and dedicated table for Favorite Food and positive #Cats values, keyed by installation and updated on each submission. Keep these preferences separate from `installation_status`.
+Review `Server/002_installation_preferences.sql` and `Server/api-dev/preferences.php`, then apply the migration once through the separate schema-administration workflow and deploy the endpoint to the development API directory. The app sends `favorite_food` and positive-integer `cat_count`; the server takes `installation_id` from private configuration and upserts one row per installation. Verify a successful save, then submit changed values and confirm the same row updates. Keep these preferences separate from `installation_status`. A separate restricted reader endpoint remains future work.

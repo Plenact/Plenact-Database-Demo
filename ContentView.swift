@@ -62,11 +62,48 @@ private struct BootstrapNotice: Decodable {
     let message: String     /* Notice message text */
 }
 
+
+///
+/// Preferences sent to preferences.php
+///
+private struct PreferencesSubmission: Encodable, Equatable {
+
+    let favoriteFood: String        /* User's favorite food             */
+    let catCount:     Int           /* Number of cats owned by the user */
+
+    // Coding keys for JSON serialization
+    enum CodingKeys: String, CodingKey {
+        case favoriteFood = "favorite_food"
+        case catCount     = "cat_count"
+    }
+}
+
+
+///
+/// Successful response returned by preferences.php
+///
+private struct PreferencesSaveResponse: Decodable {
+
+    let saved: Bool /* Indicates whether the preferences were successfully saved */
+}
+
+///
+/// Token validation status for the current session
+///
 private enum TokenValidationStatus {
     case notChecked         /* Token validation has not been performed yet  */
     case accepted           /* Token has been accepted by the server        */
     case rejected           /* Token has been rejected by the server        */
     case forbidden          /* Token is forbidden from accessing the server */
+}
+
+///
+/// Input fields for the content view
+///
+private enum ContentField: Hashable {
+    case token              /* User's token input field                     */
+    case favoriteFood       /* User's favorite food input field             */
+    case catCount           /* User's cat count input field                 */
 }
 
 
@@ -84,11 +121,14 @@ private enum TokenValidationStatus {
 struct ContentView: View {
 
     // Variables
-    @State private var result          = "Ready to test."               /* Latest request feedback              */
-    @State private var isLoading       = false                          /* Request-in-progress flag             */
-    @State private var tokenInput      = ""                             /* Token being entered, never logged    */
-    @State private var tokenMessage    = ""                             /* Keychain operation feedback          */
-    @State private var bootstrapResult = "Database data not loaded."    /* Latest bootstrap response feedback   */
+    @State private var result            = "Ready to test."               /* Latest request feedback                */
+    @State private var isLoading         = false                          /* Request-in-progress flag               */
+    @State private var tokenInput        = ""                             /* Token being entered, never logged      */
+    @State private var tokenMessage      = ""                             /* Keychain operation feedback            */
+    @State private var bootstrapResult   = "Database data not loaded."    /* Latest bootstrap response feedback     */
+    @State private var favoriteFoodInput = ""                             /* User's favorite food input field       */
+    @State private var catCountInput     = ""                             /* User's cat count input field           */
+    @State private var preferencesResult = "No preferences submitted."    /* Latest preferences submission feedback */
 
     // View State
     @State private var tokenIsStored: Bool?              = nil                                  /* nil means Keychain status is unknown  */
@@ -96,7 +136,7 @@ struct ContentView: View {
     @State private var bootstrapData: BootstrapResponse? = nil                                  /* Latest bootstrap response             */
 
     // Focus State
-    @FocusState private var isTokenFieldFocused: Bool                                          /* Focus state for the token input field */
+    @FocusState private var focusedField: ContentField?                                        /* Currently focused input field         */
 
 
     ///
@@ -121,7 +161,7 @@ struct ContentView: View {
                         .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .focused($isTokenFieldFocused)
+                        .focused($focusedField, equals: .token)
 
                     if !tokenInput.isEmpty && !tokenInputIsValid {
 
@@ -208,6 +248,65 @@ struct ContentView: View {
                     }
                 }
             }
+
+            GroupBox("Installation Preferences") {
+
+                VStack(alignment: .leading, spacing: 12) {
+
+                    HStack {
+                        Text("Favorite Food:")
+                            .frame(width: 112, alignment: .leading)
+
+                        TextField("Enter a food", text: $favoriteFoodInput)
+                            .textFieldStyle(.roundedBorder)
+                            .textInputAutocapitalization(.words)
+                            .focused($focusedField, equals: .favoriteFood)
+                            .onChange(of: favoriteFoodInput) { _, _ in
+                                preferencesResult = "Unsaved changes."
+                            }
+                    }
+
+                    if !favoriteFoodInput.isEmpty && !favoriteFoodIsValid {
+
+                        Text("Enter a food name up to 255 characters.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack {
+                        Text("#Cats:")
+                            .frame(width: 112, alignment: .leading)
+
+                        TextField("Positive whole number", text: $catCountInput)
+                            .textFieldStyle(.roundedBorder)
+                            .keyboardType(.numberPad)
+                            .focused($focusedField, equals: .catCount)
+                            .onChange(of: catCountInput) { _, _ in
+                                preferencesResult = "Unsaved changes."
+                            }
+                    }
+
+                    if !catCountInput.isEmpty && catCountValue == nil {
+
+                        Text("Enter a positive whole number.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button("Save Preferences") {
+
+                        Task {
+                            await savePreferences()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!preferencesInputIsValid || isLoading)
+
+                    Text(preferencesResult)
+                        .font(.footnote)
+                        .textSelection(.enabled)
+                }
+            }
         }
         .padding()
         .toolbar {
@@ -217,7 +316,7 @@ struct ContentView: View {
                 Spacer()
 
                 Button("Done") {
-                    isTokenFieldFocused = false
+                    focusedField = nil
                 }
             }
         }
@@ -254,6 +353,56 @@ struct ContentView: View {
 
 
     ///
+    /// @brief      Return the trimmed food value when it fits the API contract
+    /// @return     (String) food value without surrounding whitespace
+    ///
+    private var favoriteFoodValue: String {
+
+        // Trim surrounding whitespace and newlines from the favorite food input before returning it
+        favoriteFoodInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+
+    ///
+    /// @brief      Check whether the food input can be stored in the database column
+    /// @return     (Bool) true for a nonempty value of at most 255 Unicode scalars
+    ///
+    private var favoriteFoodIsValid: Bool {
+
+        // Match the API's Unicode-scalar length limit.
+        !favoriteFoodValue.isEmpty && favoriteFoodValue.unicodeScalars.count <= 255
+    }
+
+
+    ///
+    /// @brief      Parse and range-check the positive cat count
+    /// @return     (Int?) valid MySQL unsigned integer value, or nil
+    ///
+    private var catCountValue: Int? {
+
+        guard let count = Int(catCountInput),
+               count > 0,
+              count <= 4_294_967_295 else {
+
+            return nil
+        }
+
+        return count
+    }
+
+
+    ///
+    /// @brief      Check whether both preference values can be submitted
+    /// @return     (Bool) true when the food and positive cat count are valid
+    ///
+    private var preferencesInputIsValid: Bool {
+
+        // Validate that both the favorite food and cat count inputs meet their respective criteria before allowing submission
+        favoriteFoodIsValid && catCountValue != nil
+    }
+
+
+    ///
     /// @brief      Describe whether a token is stored without revealing its value
     /// @return     (String) non-sensitive Keychain status for the token panel
     ///
@@ -273,7 +422,7 @@ struct ContentView: View {
                 return "Token is stored in Keychain. Server validation has not been performed this session."
 
             case .accepted:
-                return "Token is stored in Keychain. The server accepted it for bootstrap."
+                return "Token is stored in Keychain. The server accepted it for app access."
 
             case .rejected:
                 return "Token is stored in Keychain, but the server rejected it (HTTP 401)."
@@ -342,6 +491,144 @@ struct ContentView: View {
 
         } catch {
             tokenMessage          = "Could not delete token: \(error.localizedDescription)"
+        }
+    }
+
+
+    ///
+    /// @fcn        ContentView.savePreferences
+    /// @brief      Submit validated installation preferences to the protected API
+    /// @details    The server associates the update with its configured installation ID
+    ///
+    /// @return     (Void) updates the save status without displaying the credential
+    /// @post       isLoading is false on every completion path
+    ///
+    private func savePreferences() async {
+
+        guard preferencesInputIsValid,
+
+              let catCount = catCountValue else {
+
+            preferencesResult = "Enter a food name and a positive whole number of cats."
+            return
+        }
+
+        // Begin the process of saving preferences
+        isLoading         = true
+        preferencesResult = "Saving preferences…"
+
+        defer { isLoading = false }
+
+        let token: String
+
+        do {
+            guard let storedToken = try TokenStore.load() else {
+
+                preferencesResult = "No app token is stored. Save the app token before submitting preferences."
+                return
+            }
+
+            guard isValidToken(storedToken) else {
+
+                preferencesResult = "The stored token has an invalid format. Replace it before continuing."
+                return
+            }
+
+            token = storedToken
+        } catch {
+
+            preferencesResult = "Could not read the app token from Keychain: \(error.localizedDescription)"
+            return
+        }
+
+        guard let url = URL(string: "https://plenact.com/api-dev/preferences.php") else {
+
+            preferencesResult = "Invalid preferences API URL."
+            return
+        }
+
+        var request = URLRequest(url: url)
+
+        request.httpMethod      = "POST"
+        request.timeoutInterval = 20
+        request.cachePolicy     = .reloadIgnoringLocalCacheData
+
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let submission = PreferencesSubmission(
+            favoriteFood: favoriteFoodValue,
+            catCount:     catCount
+        )
+
+        do {
+            request.httpBody = try JSONEncoder().encode(submission)
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+
+                preferencesResult = "Failed: preferences response was not HTTP."
+                return
+            }
+
+            switch httpResponse.statusCode {
+
+                case 200:                                           /* OK */
+                    tokenValidationStatus = .accepted
+
+                    let result = try JSONDecoder().decode(
+                        PreferencesSaveResponse.self,
+                        from: data
+                    )
+
+                    guard result.saved else {
+
+                        preferencesResult = "The server did not confirm that preferences were saved."
+                        return
+                    }
+
+                    preferencesResult = "Preferences saved to the database for this installation."
+
+                case 401:                                           /* Unauthorized */
+                    tokenValidationStatus = .rejected
+                    preferencesResult     = "Authentication failed (HTTP 401). The stored app token was rejected."
+
+                case 403:                                           /* Forbidden */
+                    tokenValidationStatus = .forbidden
+                    preferencesResult     = "Access denied (HTTP 403). This endpoint requires the app token."
+
+                case 400, 413, 415, 422:                            /* Client errors */
+                    preferencesResult     = "The server rejected the preference values (HTTP \(httpResponse.statusCode))."
+
+                case 500...599:                                     /* Server errors */
+                    preferencesResult     = "Server error (HTTP \(httpResponse.statusCode)). Try again later."
+
+                default:
+                    preferencesResult     = "Preferences request failed with HTTP \(httpResponse.statusCode)."
+            }
+        } catch is DecodingError {
+            preferencesResult = "Could not decode the preferences response. Its JSON does not match the expected format."
+
+        } catch let error as URLError {
+
+            switch error.code {
+
+                case .notConnectedToInternet, .networkConnectionLost:               /* Network unavailable */
+                    preferencesResult = "Network unavailable. Check the connection and try again."
+
+                case .timedOut:                                                     /* Request timed out */
+                    preferencesResult = "The preferences request timed out. Try again."
+
+                case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:       /* Host unreachable */
+                    preferencesResult = "Could not reach the API host. Check the connection and try again."
+
+                default:
+                    preferencesResult = "Network request failed: \(error.localizedDescription)"
+            }
+        } catch {
+            preferencesResult = "Preferences request failed: \(error.localizedDescription)"
         }
     }
 
