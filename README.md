@@ -1,34 +1,100 @@
-# Plenact Database Demo — HTTPS baseline
+# Plenact Database Demo
 
-Native SwiftUI app testing a PHP endpoint on Bluehost
+A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS. The API accesses a MySQL-compatible database; the app never connects directly to the database.
 
-## Server setup
+## Current progress
 
-Upload Server/health.php to public_html/plenact/api-dev/health.php
-
-The endpoint is intentionally public and returns fixed JSON. It contains no credentials and does not access the database
+- The app performs a foreground, user-triggered health check with loading feedback and error handling.
+- `TokenStore.swift` provides Keychain save, load, and delete operations. Token-entry UI and authenticated app requests are still pending.
+- The deployed server has a public health endpoint and app-token-protected authentication and database-bootstrap endpoints.
+- The database schema and initial configuration/notice data have been created and verified.
+- Installation-status uploads and a separate reader endpoint are still pending.
 
 ## App setup
 
-- Open Database Demo.xcodeproj in Xcode
+1. Open `Plenact Database Demo.xcodeproj` in Xcode.
+2. Select your signing team and an available bundle identifier.
+3. Select an iPhone simulator or connected iPhone, then run.
+4. Tap **Test API**.
 
-- Select your signing team and an available bundle identifier
+The `AppIcon` asset is configured for Debug and Release. App credentials will be entered at runtime and stored in Keychain; do not embed them in source or the app bundle.
 
-- Select an iPhone simulator or connected iPhone, then run
+## Server source and deployment
 
-- Tap Test API
+The local filesystem directory is `Server/`; existing Git entries use `server/`. On this case-insensitive Mac these refer to the same directory. The casing has not been changed as part of credential housekeeping.
 
-## Verification
+Deploy the scripts from `Server/api-dev/` to `/home2/justirl2/public_html/plenact/api-dev/`:
 
+| Endpoint | Purpose | Access |
+| --- | --- | --- |
+| `health.php` | Fixed service-health response | Public |
+| `auth-check.php` | Verify app-role authentication | App token |
+| `bootstrap.php` | Fetch welcome configuration and latest active notice | App token |
+
+The duplicate `Server/health.php` is an earlier baseline copy; use `Server/api-dev/health.php` for deployment.
+
+The server uses PHP 8.2 and Percona 5.7 (MySQL 5.7 compatible). The database user has SELECT, INSERT, and UPDATE privileges. Run schema changes through a separate administrative workflow. `Server/001_initial.sql` was already applied; do not rerun it against the existing database. Database timestamps represent UTC.
+
+The PHP scripts resolve private configuration relative to their deployed directory. Local `Server/` is a deployment reference, not a runnable mirror of the hosting directory layout.
+
+## Private configuration
+
+Only placeholder examples belong in Git:
+
+- `Server/plenact-private/database.example.json`
+- `Server/plenact-private/api-auth.example.json`
+
+Use these as structural references for the real `database.json` and `api-auth.json` stored on the host in `/home2/justirl2/plenact-private/`, outside the public web root. Replace every placeholder privately; the example token strings intentionally do not pass the server's token validation.
+
+Use two distinct 64-character ASCII alphanumeric tokens and retain them in your password manager. The installation identifier is a UUID, not a credential. Restrict the private directory to `0700` and its configuration files to `0600`.
+
+Local real configuration filenames are ignored, but ignore rules do not remove secrets from earlier commits or manually created archives. Do not package private configuration in shared ZIP files. Do not publish temporary probes from `Server/api-dev/.archived/`; a dot-prefixed folder alone is not proof that HTTP access is blocked.
+
+## Credential rotation still required
+
+Populated private configuration was included in a shared archive and tracked in Git history. Removing current tracked copies does not invalidate those values or erase that history.
+
+Complete the following privately in cPanel and your password manager:
+
+1. Generate a new database password and two distinct new API tokens. Do not paste them into chat or terminal commands.
+2. Change the dedicated database user's password in cPanel and update the private server `database.json` immediately. Expect a brief interruption to database-backed requests between those changes.
+3. Update the private server `api-auth.json` with both new tokens. Preserve the existing installation UUID. Update your password-manager records and any clients using the old tokens.
+4. Verify bootstrap with the new app token, and confirm that the old app token is rejected. Keep private files at `0600`.
+5. Before sharing or publishing the repository again, review where the affected commits and archives were distributed. Any history cleanup needs a separate, coordinated plan; rotation remains necessary even after history cleanup.
+
+No credential rotation, deployment change, or Git history rewrite is performed by this local housekeeping change.
+
+## Verification recorded so far
+
+Public health check:
+
+```sh
 curl --include --connect-timeout 10 --max-time 20 https://plenact.com/api-dev/health.php
+```
 
-Expected: HTTP 200, application/json, Cache-Control: no-store,
-and {"service":"plenact-dev","ok":true}
+Expected: HTTP 200, JSON content type, `Cache-Control: no-store`, and `{"service":"plenact-dev","ok":true}`.
 
-Verified in the simulator and on a physical iPhone.
-With airplane mode enabled and Wi-Fi off, the app displays an error.
-Restoring connectivity and retrying returns success
+The health flow was previously verified in the simulator and on a physical iPhone. Disabling connectivity produced an error; restoring connectivity and retrying returned success.
 
-Database access, authentication, configuration, notices, and status
-uploads are not implemented yet
+Server authentication was previously verified: missing/invalid token returned 401, reader token returned 403 on app-only endpoints, and app token returned 200. These are recorded results, not a fresh deployment test.
 
+Bootstrap returned:
+
+```json
+{
+  "configuration": {
+    "welcome_message": "Hello from the Plenact database!",
+    "version": 1
+  },
+  "notice": {
+    "id": 1,
+    "message": "Development connection test: welcome aboard."
+  }
+}
+```
+
+`notice` may be null when no active notice exists.
+
+## Next milestone
+
+Add secure token entry, format validation, Keychain save/delete controls, and a stored-token indicator. Verify persistence after relaunch and absence after deletion. Then integrate authenticated bootstrap retrieval and display the configuration and optional notice, with clear handling of authentication, server, connectivity, and decoding failures.

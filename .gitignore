@@ -1,1 +1,16 @@
 .Archived/
+.archived/
+.DS_Store
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+
+# Private credentials: cover both the filesystem and Git's existing casing.
+/Server/plenact-private/*.json
+!/Server/plenact-private/*.example.json
+/server/plenact-private/*.json
+!/server/plenact-private/*.example.json
+
+# Shared project archives may contain local credentials.
+*.zip
