@@ -6,7 +6,7 @@
 // @notes      Never log token values or place real credentials in source code
 //
 // @section    Opens
-//      Authenticated configuration retrieval and token-entry UI are not integrated yet
+//      Installation-status upload is not integrated yet
 //
 // -------------------------------------------------------------------------------------------------
 import Foundation
@@ -36,7 +36,7 @@ enum TokenStore {
     ///
     private static var query: [String: Any] {
         [
-            kSecClass as String:       kSecClassGenericPassword,
+            kSecClass       as String: kSecClassGenericPassword,
             kSecAttrService as String: "com.plenact.DatabaseDemo.api",
             kSecAttrAccount as String: "development-app-token"
         ]
@@ -138,6 +138,7 @@ enum TokenStore {
         guard let data = item as? Data,
               
               let token = String(data: data, encoding: .utf8) else {
+
             throw Failure(status: errSecDecode)
         }
 
@@ -158,6 +159,7 @@ enum TokenStore {
         let status = SecItemDelete(query as CFDictionary)
 
         guard status == errSecSuccess || status == errSecItemNotFound else {
+            
             throw Failure(status: status)
         }
     }

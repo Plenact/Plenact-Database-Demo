@@ -1,12 +1,12 @@
 // -------------------------------------------------------------------------------------------------
 // @file       ContentView.swift
-// @brief      Manage the app token and exercise the public Plenact health endpoint
-// @details    Store credentials in Keychain and present health-request feedback
+// @brief      Manage the app token and retrieve Plenact API data
+// @details    Exercise the public health endpoint and authenticated database bootstrap
 //
-// @notes      This foreground test does not authenticate or access database records
+// @notes      The health test is public; bootstrap retrieval uses the stored app token
 //
 // @section    Opens
-//      Authenticated configuration retrieval is not integrated yet
+//      Installation-status upload is not integrated yet
 //
 // -------------------------------------------------------------------------------------------------
 import SwiftUI
@@ -27,6 +27,42 @@ private struct HealthResponse: Decodable {
     let ok:      Bool      /* Health flag reported by the script */
 }
 
+///
+/// Bootstrap endpoint response contract
+///
+/// @section    Purpose
+///     Decode the database-backed configuration and optional active notice
+///
+private struct BootstrapResponse: Decodable {
+
+    let configuration: AppConfiguration
+    let notice:        BootstrapNotice?
+}
+
+///
+/// Required configuration returned by bootstrap.php
+///
+private struct AppConfiguration: Decodable {
+
+    let welcomeMessage: String
+    let version:        Int
+
+    enum CodingKeys: String, CodingKey {
+        case welcomeMessage = "welcome_message"
+        case version
+    }
+}
+
+///
+/// Optional active notice returned by bootstrap.php
+///
+private struct BootstrapNotice: Decodable {
+
+    let id:      Int        /* Notice identifier   */
+    let message: String     /* Notice message text */
+}
+
+
 // --------------------------------------- MARK: - View ----------------------------------------- //
 
 ///
@@ -40,11 +76,15 @@ private struct HealthResponse: Decodable {
 @MainActor
 struct ContentView: View {
 
-    @State private var result       = "Ready to test."  /* Latest request feedback              */
-    @State private var isLoading    = false             /* Request-in-progress flag             */
-    @State private var tokenInput   = ""                /* Token being entered, never logged    */
-    @State private var tokenMessage = ""                /* Keychain operation feedback          */
-    @State private var tokenIsStored: Bool?             /* nil means Keychain status is unknown */
+    @State private var result          = "Ready to test."               /* Latest request feedback              */
+    @State private var isLoading       = false                          /* Request-in-progress flag             */
+    @State private var tokenInput      = ""                             /* Token being entered, never logged    */
+    @State private var tokenMessage    = ""                             /* Keychain operation feedback          */
+    @State private var bootstrapResult = "Database data not loaded."    /* Latest bootstrap response feedback   */
+
+    @State private var tokenIsStored: Bool?                             /* nil means Keychain status is unknown */
+    @State private var bootstrapData: BootstrapResponse?
+
 
     ///
     /// @fcn        ContentView.body
@@ -114,6 +154,46 @@ struct ContentView: View {
             Text(result)
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
+
+            GroupBox("Database Bootstrap") {
+
+                VStack(alignment: .leading, spacing: 12) {
+
+                    Button("Load Database Data") {
+
+                        Task {
+                            await loadBootstrap()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isLoading)
+
+                    Text(bootstrapResult)
+                        .font(.footnote)
+                        .textSelection(.enabled)
+
+                    if let bootstrapData {
+
+                        Text(bootstrapData.configuration.welcomeMessage)
+                            .font(.body)
+                            .textSelection(.enabled)
+
+                        Text("Configuration version: \(bootstrapData.configuration.version)")
+                            .font(.footnote)
+
+                        if let notice = bootstrapData.notice {
+
+                            Text("Notice: \(notice.message)")
+                                .font(.footnote)
+                                .textSelection(.enabled)
+
+                        } else {
+                            Text("No active notice.")
+                                .font(.footnote)
+                        }
+                    }
+                }
+            }
         }
         .padding()
         .onAppear(perform: loadTokenStatus)
@@ -126,7 +206,19 @@ struct ContentView: View {
     ///
     private var tokenInputIsValid: Bool {
 
-        let tokenBytes = tokenInput.utf8
+        isValidToken(tokenInput)
+    }
+
+
+    ///
+    /// @brief      Check the server's required app-token format
+    /// 
+    /// @param[in]  token - Candidate token to validate without normalization
+    /// @return     (Bool) true only for 64 ASCII alphanumeric bytes
+    ///
+    private func isValidToken(_ token: String) -> Bool {
+
+        let tokenBytes = token.utf8
 
         return tokenBytes.count == 64 && tokenBytes.allSatisfy { byte in
             (48...57).contains(byte)
@@ -206,6 +298,142 @@ struct ContentView: View {
 
         } catch {
             tokenMessage = "Could not delete token: \(error.localizedDescription)"
+        }
+    }
+
+
+    ///
+    /// @fcn        ContentView.loadBootstrap
+    /// @brief      Fetch authenticated configuration and the optional active notice
+    /// @details    Load the app token from Keychain, require HTTP 200, and decode the response
+    ///
+    /// @return     (Void) updates bootstrap data or a safe failure message
+    /// @post       isLoading is false and no credential is included in UI feedback
+    ///
+    private func loadBootstrap() async {
+
+        isLoading       = true
+        bootstrapData   = nil
+        bootstrapResult = "Loading database data…"
+
+        defer { isLoading = false }
+
+        let token: String
+
+        do {
+            guard let storedToken = try TokenStore.load() else {
+
+                bootstrapResult = "No app token is stored. Save the app token before loading database data."
+                
+                return
+            }
+
+            guard isValidToken(storedToken) else {
+
+                bootstrapResult = "The stored token has an invalid format. Replace it before continuing."
+               
+                return
+            }
+
+            token = storedToken
+
+        } catch {
+
+            bootstrapResult = "Could not read the app token from Keychain: \(error.localizedDescription)"
+           
+            return
+        }
+
+        guard let url = URL(
+
+            string: "https://plenact.com/api-dev/bootstrap.php"
+
+        ) else {
+
+            bootstrapResult = "Invalid bootstrap API URL."
+
+            return
+        }
+
+        var request             = URLRequest(url: url)
+        request.httpMethod      = "GET"
+        request.timeoutInterval = 20
+        request.cachePolicy     = .reloadIgnoringLocalCacheData
+
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+
+                bootstrapResult = "Failed: bootstrap response was not HTTP."
+
+                return
+            }
+
+            switch httpResponse.statusCode {
+
+                case 200:
+                    break
+
+                case 401:
+
+                    bootstrapResult = "Authentication failed (HTTP 401). The stored app token was rejected."
+                    
+                    return
+
+                case 403:
+
+                    bootstrapResult = "Access denied (HTTP 403). This endpoint requires the app token."
+                    
+                    return
+
+                case 500...599:
+
+                    bootstrapResult = "Server error (HTTP \(httpResponse.statusCode)). Try again later."
+                    
+                    return
+
+                default:
+
+                    bootstrapResult = "Bootstrap request failed with HTTP \(httpResponse.statusCode)."
+                    
+                    return
+
+            }
+
+            bootstrapData   = try JSONDecoder().decode(BootstrapResponse.self, from: data)
+            bootstrapResult = "Database data loaded successfully."
+
+        } catch is DecodingError {
+
+            bootstrapResult = "Could not decode the bootstrap response. Its JSON does not match the expected format."
+       
+        } catch let error as URLError {
+
+            switch error.code {
+
+                case .notConnectedToInternet, .networkConnectionLost:
+
+                    bootstrapResult = "Network unavailable. Check the connection and try again."
+                
+                case .timedOut:
+                 
+                    bootstrapResult = "The bootstrap request timed out. Try again."
+               
+                case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+               
+                    bootstrapResult = "Could not reach the API host. Check the connection and try again."
+              
+                default:
+               
+                    bootstrapResult = "Network request failed: \(error.localizedDescription)"
+            }
+        } catch {
+
+            bootstrapResult = "Bootstrap request failed: \(error.localizedDescription)"
         }
     }
 

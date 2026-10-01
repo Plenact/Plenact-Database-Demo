@@ -5,7 +5,7 @@ A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS
 ## Current progress
 
 - The app performs a foreground, user-triggered health check with loading feedback and error handling.
-- `TokenStore.swift` provides Keychain save, load, and delete operations. The app now has secure token entry, local format validation, Keychain save/delete controls, and a stored-token indicator. Saving does not validate the token with the server; authenticated app requests are still pending.
+- `TokenStore.swift` provides Keychain save, load, and delete operations. The app has secure token entry, local format validation, Keychain save/delete controls, and a stored-token indicator. It now also includes authenticated bootstrap retrieval and displays the configuration plus an optional notice. Saving a token does not validate it with the server; the app-level bootstrap request still needs an Xcode runtime test with a rotated app token.
 - The deployed server has a public health endpoint and app-token-protected authentication and database-bootstrap endpoints.
 - The database schema and initial configuration/notice data have been created and verified.
 - Installation-status uploads and a separate reader endpoint are still pending.
@@ -16,6 +16,7 @@ A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS
 2. Select your signing team and an available bundle identifier.
 3. Select an iPhone simulator or connected iPhone, then run.
 4. Tap **Test API**.
+5. Store the app token in Keychain, then tap **Load Database Data** to request the bootstrap response.
 
 The `AppIcon` asset is configured for Debug and Release. App credentials will be entered at runtime and stored in Keychain; do not embed them in source or the app bundle.
 
@@ -97,4 +98,4 @@ Bootstrap returned:
 
 ## Next milestone
 
-Verify token persistence after relaunch and removal after deletion. Then integrate authenticated bootstrap retrieval and display the configuration and optional notice, with clear handling of authentication, server, connectivity, and decoding failures. After bootstrap, design a separate app-token-protected write endpoint and dedicated table for Favorite Food and positive #Cats values, keyed by installation and updated on each submission. Keep these preferences separate from `installation_status`.
+Verify the app's bootstrap request in Xcode with the rotated app token. Check that configuration and an optional notice display, and that authentication, authorization, server, connectivity, and decoding failures remain clear. After bootstrap verification, design a separate app-token-protected write endpoint and dedicated table for Favorite Food and positive #Cats values, keyed by installation and updated on each submission. Keep these preferences separate from `installation_status`.
