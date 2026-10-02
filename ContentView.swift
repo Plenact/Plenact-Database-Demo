@@ -149,8 +149,8 @@ private enum ContentField: Hashable {
 /// Sections in the installation preferences panel
 ///
 private enum InstallationPreferencesTab: Hashable {
-    case preferences            /* Installation preferences section */
-    case revisions               /* Revisions section               */    
+    case lifestyle
+    case planner
 }
 
 
@@ -181,7 +181,7 @@ struct ContentView: View {
     @State private var isExcited          = false                         /* Whether the user is excited            */
     @State private var preferencesResult = "Preferences not loaded."      /* Latest preferences feedback            */
 
-    @State private var selectedPreferencesTab = InstallationPreferencesTab.preferences  /* Currently selected tab in the installation preferences panel */
+    @State private var selectedPreferencesTab = InstallationPreferencesTab.lifestyle
 
 
     // View State
@@ -270,40 +270,42 @@ struct ContentView: View {
                 .disabled(isLoading)
             }
 
-            if isLoading {
-                ProgressView("Contacting server…")
-            }
+            if selectedPreferencesTab == .lifestyle {
+                if isLoading {
+                    ProgressView("Contacting server…")
+                }
 
-            Text(result)
-                .multilineTextAlignment(.center)
-                .textSelection(.enabled)
+                Text(result)
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
 
-            GroupBox {
+                GroupBox {
 
-                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 12) {
 
-                    Text(bootstrapResult)
-                        .font(.footnote)
-                        .textSelection(.enabled)
-
-                    if let bootstrapData {
-
-                        Text(bootstrapData.configuration.welcomeMessage)
-                            .font(.body)
+                        Text(bootstrapResult)
+                            .font(.footnote)
                             .textSelection(.enabled)
 
-                        Text("Configuration version: \(bootstrapData.configuration.version)")
-                            .font(.footnote)
+                        if let bootstrapData {
 
-                        if let notice = bootstrapData.notice {
-
-                            Text("Notice: \(notice.message)")
-                                .font(.footnote)
+                            Text(bootstrapData.configuration.welcomeMessage)
+                                .font(.body)
                                 .textSelection(.enabled)
 
-                        } else {
-                            Text("No active notice.")
+                            Text("Configuration version: \(bootstrapData.configuration.version)")
                                 .font(.footnote)
+
+                            if let notice = bootstrapData.notice {
+
+                                Text("Notice: \(notice.message)")
+                                    .font(.footnote)
+                                    .textSelection(.enabled)
+
+                            } else {
+                                Text("No active notice.")
+                                    .font(.footnote)
+                            }
                         }
                     }
                 }
@@ -316,32 +318,47 @@ struct ContentView: View {
                     HStack(spacing: 4) {
 
                         Button {
-                            selectedPreferencesTab = .preferences
+                            selectedPreferencesTab = .lifestyle
                         } label: {
 
-                            Text("Preferences")
+                            Text("Lifestyle")
                                 .font(.footnote.weight(.semibold))
                                 .frame(maxWidth: .infinity, minHeight: 48)
-                                .background(Color(.systemBackground), in: Capsule())
+                                .background {
+                                    if selectedPreferencesTab == .lifestyle {
+                                        Capsule().fill(Color(.systemBackground))
+                                    }
+                                }
                         }
                         .buttonStyle(.plain)
-                        .accessibilityAddTraits(.isSelected)
+                        .accessibilityValue(
+                            selectedPreferencesTab == .lifestyle ? "Selected" : "Not selected"
+                        )
 
-                        Button {} label: {
+                        Button {
+                            selectedPreferencesTab = .planner
+                        } label: {
 
-                            Text("Revisions")
+                            Text("Planner")
                                 .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, minHeight: 48)
+                                .background {
+                                    if selectedPreferencesTab == .planner {
+                                        Capsule().fill(Color(.systemBackground))
+                                    }
+                                }
                         }
                         .buttonStyle(.plain)
-                        .disabled(true)
+                        .disabled(bootstrapData == nil || isLoading)
+                        .accessibilityValue(
+                            selectedPreferencesTab == .planner ? "Selected" : "Not selected"
+                        )
                     }
                     .padding(.horizontal, 4)
                     .padding(.vertical, 5)
                     .background(Color.secondary.opacity(0.15), in: Capsule())
 
-                    if selectedPreferencesTab == .preferences {
+                    if selectedPreferencesTab == .lifestyle {
                         
                         VStack(alignment: .leading, spacing: 12) {
 
@@ -463,6 +480,10 @@ struct ContentView: View {
                                 .font(.footnote)
                                 .textSelection(.enabled)
                         }
+                    } else {
+                        Text("Planner content will be added in a later stage.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
 
                     Spacer(minLength: 0)
@@ -471,6 +492,7 @@ struct ContentView: View {
             }
         }
         .padding()
+        .animation(.easeInOut(duration: 0.2), value: selectedPreferencesTab)
         .toolbar {
             if isKeyboardVisible {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -926,6 +948,7 @@ struct ContentView: View {
         isLoading       = true
         bootstrapData   = nil
         bootstrapResult = "Loading database data…"
+        selectedPreferencesTab = .lifestyle
 
         defer { isLoading = false }
 
