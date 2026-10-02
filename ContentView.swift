@@ -11,6 +11,7 @@
 // -------------------------------------------------------------------------------------------------
 import SwiftUI
 import Foundation
+import UIKit
 
 
 // --------------------------------------- MARK: - Models --------------------------------------- //
@@ -67,15 +68,51 @@ private struct BootstrapNotice: Decodable {
 ///
 /// Preferences sent to preferences.php and read from bootstrap.php
 ///
+private enum GenderOption: String, CaseIterable, Identifiable {
+
+    case woman
+    case man
+    case nonBinary      = "non_binary"
+    case selfDescribe   = "self_describe"
+    case preferNotToSay = "prefer_not_to_say"
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+
+        switch self {
+            case .woman:
+                return "Woman"
+            case .man:
+                return "Man"
+            case .nonBinary:
+                return "Non-binary"
+            case .selfDescribe:
+                return "Self-describe"
+            case .preferNotToSay:
+                return "Prefer not to say"
+        }
+    }
+}
+
+
 private struct PreferencesSubmission: Codable, Equatable {
 
     let favoriteFood: String        /* User's favorite food             */
     let catCount:     Int           /* Number of cats owned by the user */
+    let gender: String?
+    let genderDescription: String?
+    let isExcited: Bool
 
     // Coding keys for JSON serialization
     enum CodingKeys: String, CodingKey {
         case favoriteFood = "favorite_food"
         case catCount     = "cat_count"
+        case gender
+        case genderDescription = "gender_description"
+        case isExcited         = "is_excited"
     }
 }
 
@@ -103,6 +140,7 @@ private enum TokenValidationStatus {
 ///
 private enum ContentField: Hashable {
     case token              /* User's token input field                     */
+    case genderDescription  /* Self-described gender input field            */
     case favoriteFood       /* User's favorite food input field             */
     case catCount           /* User's cat count input field                 */
 }
@@ -132,11 +170,15 @@ struct ContentView: View {
     // Variables
     @State private var result            = "Ready to test."               /* Latest request feedback                */
     @State private var isLoading         = false                          /* Request-in-progress flag               */
+    @State private var isKeyboardVisible = false                          /* On-screen keyboard visibility           */
     @State private var tokenInput        = ""                             /* Token being entered, never logged      */
     @State private var tokenMessage      = ""                             /* Keychain operation feedback            */
     @State private var bootstrapResult   = "Database data not loaded."    /* Latest bootstrap response feedback     */
+    @State private var genderInput       = ""                             /* Optional gender category               */
+    @State private var genderDescriptionInput = ""                        /* Descrip for the self-describe choice   */
     @State private var favoriteFoodInput = ""                             /* User's favorite food input field       */
     @State private var catCountInput     = ""                             /* User's cat count input field           */
+    @State private var isExcited          = false                         /* Whether the user is excited            */
     @State private var preferencesResult = "Preferences not loaded."      /* Latest preferences feedback            */
 
     @State private var selectedPreferencesTab = InstallationPreferencesTab.preferences  /* Currently selected tab in the installation preferences panel */
@@ -162,9 +204,6 @@ struct ContentView: View {
     var body: some View {
         
         VStack(spacing: 20) {
-            
-            Text("Plenact API Test")
-                .font(.title)
 
             GroupBox("App Token") {
 
@@ -210,13 +249,26 @@ struct ContentView: View {
                 }
             }
 
-            Button("Test API") {
-                Task {
-                    await testAPI()
+            HStack(spacing: 12) {
+
+                Button("Load Database") {
+                    Task {
+                        await loadBootstrap()
+                    }
                 }
+                .frame(maxWidth: .infinity)
+                .buttonStyle(.borderedProminent)
+                .disabled(isLoading)
+
+                Button("Test Database") {
+                    Task {
+                        await testAPI()
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .buttonStyle(.borderedProminent)
+                .disabled(isLoading)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isLoading)
 
             if isLoading {
                 ProgressView("Contacting server…")
@@ -226,18 +278,9 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
 
-            GroupBox("Database Bootstrap") {
+            GroupBox {
 
                 VStack(alignment: .leading, spacing: 12) {
-
-                    Button("Load Database Data") {
-
-                        Task {
-                            await loadBootstrap()
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isLoading)
 
                     Text(bootstrapResult)
                         .font(.footnote)
@@ -270,21 +313,83 @@ struct ContentView: View {
 
                 VStack(alignment: .leading, spacing: 12) {
 
-                    Picker("Installation Preferences Section", selection: $selectedPreferencesTab) {
+                    HStack(spacing: 4) {
 
-                        Text("Preferences")
-                            .tag(InstallationPreferencesTab.preferences)
+                        Button {
+                            selectedPreferencesTab = .preferences
+                        } label: {
 
-                        Text("Revisions")
-                            .tag(InstallationPreferencesTab.revisions)
-                            .disabled(true)
+                            Text("Preferences")
+                                .font(.footnote.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                                .background(Color(.systemBackground), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(.isSelected)
+
+                        Button {} label: {
+
+                            Text("Revisions")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(true)
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 5)
+                    .background(Color.secondary.opacity(0.15), in: Capsule())
 
                     if selectedPreferencesTab == .preferences {
                         
                         VStack(alignment: .leading, spacing: 12) {
+
+                            HStack {
+                                Text("Gender:")
+                                    .frame(width: 112, alignment: .leading)
+
+                                Picker("Gender", selection: $genderInput) {
+                                    Text("Choose a gender").tag("")
+
+                                    ForEach(GenderOption.allCases) { option in
+                                        Text(option.title).tag(option.rawValue)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                                .onChange(of: genderInput) { _, newValue in
+
+                                    if newValue != GenderOption.selfDescribe.rawValue {
+                                        genderDescriptionInput = ""
+                                    }
+
+                                    updatePreferencesEditStatus()
+                                }
+                            }
+
+                            if genderInput == GenderOption.selfDescribe.rawValue {
+
+                                HStack {
+                                    Text("Description:")
+                                        .frame(width: 112, alignment: .leading)
+
+                                    TextField("Describe your gender", text: $genderDescriptionInput)
+                                        .textFieldStyle(.roundedBorder)
+                                        .textInputAutocapitalization(.words)
+                                        .focused($focusedField, equals: .genderDescription)
+                                        .onChange(of: genderDescriptionInput) { _, _ in
+                                            updatePreferencesEditStatus()
+                                        }
+                                }
+
+                                if !genderDescriptionIsValid {
+
+                                    Text("Enter a description up to 100 characters.")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
 
                             HStack {
                                 Text("Favorite Food:")
@@ -326,6 +431,25 @@ struct ContentView: View {
                                     .foregroundStyle(.secondary)
                             }
 
+                            Button {
+                                isExcited.toggle()
+                                updatePreferencesEditStatus()
+
+                            } label: {
+
+                                HStack(spacing: 8) {
+
+                                    Image(systemName: isExcited ? "checkmark.square.fill" : "square")
+                                        .frame(width: 20, height: 20)
+
+                                    Text("Excited")
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Excited")
+                            .accessibilityValue(isExcited ? "Checked" : "Unchecked")
+
                             Button("Save Preferences") {
 
                                 Task {
@@ -340,22 +464,35 @@ struct ContentView: View {
                                 .textSelection(.enabled)
                         }
                     }
+
+                    Spacer(minLength: 0)
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
             }
         }
         .padding()
         .toolbar {
+            if isKeyboardVisible {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
 
-            ToolbarItemGroup(placement: .keyboard) {
-
-                Spacer()
-
-                Button("Done") {
-                    focusedField = nil
+                    Button("Done") {
+                        focusedField = nil
+                    }
                 }
             }
         }
         .onAppear(perform: loadTokenStatus)
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIResponder.keyboardWillShowNotification
+        )) { _ in
+            isKeyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIResponder.keyboardWillHideNotification
+        )) { _ in
+            isKeyboardVisible = false
+        }
     }
 
 
@@ -410,6 +547,42 @@ struct ContentView: View {
 
 
     ///
+    /// @brief      Return the trimmed self-described gender value
+    /// @return     (String) gender description without surrounding whitespace
+    ///
+    private var genderDescriptionValue: String {
+
+        genderDescriptionInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+
+    ///
+    /// @brief      Validate the selected Gender and any self-description
+    /// @return     (Bool) true when the optional selection and description are valid
+    ///
+    private var genderDescriptionIsValid: Bool {
+
+        if genderInput == GenderOption.selfDescribe.rawValue {
+
+            return !genderDescriptionValue.isEmpty
+                && genderDescriptionValue.unicodeScalars.count <= 100
+        }
+
+        return genderDescriptionValue.isEmpty
+    }
+
+
+    ///
+    /// @brief      Check that Gender is blank or one of the supported choices
+    /// @return     (Bool) true for an empty or known Gender value
+    ///
+    private var genderSelectionIsValid: Bool {
+
+        genderInput.isEmpty || GenderOption(rawValue: genderInput) != nil
+    }
+
+
+    ///
     /// @brief      Parse and range-check the positive cat count
     /// @return     (Int?) valid MySQL unsigned integer value, or nil
     ///
@@ -433,7 +606,10 @@ struct ContentView: View {
     private var preferencesInputIsValid: Bool {
 
         // Validate that both the favorite food and cat count inputs meet their respective criteria before allowing submission
-        favoriteFoodIsValid && catCountValue != nil
+        favoriteFoodIsValid
+            && catCountValue != nil
+            && genderSelectionIsValid
+            && genderDescriptionIsValid
     }
 
 
@@ -445,14 +621,21 @@ struct ContentView: View {
 
         if let savedPreferences,
            favoriteFoodValue == savedPreferences.favoriteFood,
-           catCountValue == savedPreferences.catCount {
-            preferencesResult = "Preferences loaded from the database."
+           catCountValue == savedPreferences.catCount,
+           genderInput == (savedPreferences.gender ?? ""),
+           genderDescriptionValue == (savedPreferences.genderDescription ?? ""),
+           isExcited == savedPreferences.isExcited {
+            preferencesResult = "Preferences loaded from the database"
+
         } else if savedPreferences == nil
                     && favoriteFoodInput.isEmpty
-                    && catCountInput.isEmpty {
-            preferencesResult = "No saved preferences for this installation."
+                    && catCountInput.isEmpty
+                    && genderInput.isEmpty
+                    && genderDescriptionInput.isEmpty
+                    && !isExcited {
+            preferencesResult = "No saved preferences for this installation"
         } else {
-            preferencesResult = "Unsaved changes."
+            preferencesResult = "Unsaved changes"
         }
     }
 
@@ -464,26 +647,26 @@ struct ContentView: View {
     private var tokenStatusMessage: String {
 
         guard let tokenIsStored else {
-            return "Keychain status unavailable."
+            return "Keychain status unavailable"
         }
 
         guard tokenIsStored else {
-            return "No token is stored in Keychain."
+            return "No token is stored in Keychain"
         }
 
         switch tokenValidationStatus {
 
             case .notChecked:
-                return "Token is stored in Keychain. Server validation has not been performed this session."
+                return "Token is stored in Keychain. Server validation has not been performed this session"
 
             case .accepted:
-                return "Token is stored in Keychain. The server accepted it for app access."
+                return "Token is stored in Keychain. The server accepted it for app access"
 
             case .rejected:
-                return "Token is stored in Keychain, but the server rejected it (HTTP 401)."
+                return "Token is stored in Keychain, but the server rejected it (HTTP 401)"
 
             case .forbidden:
-                return "Token is stored in Keychain, but it lacks app access (HTTP 403)."
+                return "Token is stored in Keychain, but it lacks app access (HTTP 403)"
         }
     }
 
@@ -514,7 +697,7 @@ struct ContentView: View {
 
         guard tokenInputIsValid else {
 
-            tokenMessage = "Enter exactly 64 ASCII letters or digits."
+            tokenMessage = "Enter exactly 64 ASCII letters or digits"
 
             return
         }
@@ -525,7 +708,7 @@ struct ContentView: View {
             tokenInput            = ""
             tokenIsStored         = true
             tokenValidationStatus = .notChecked
-            tokenMessage          = "Token saved to Keychain."
+            tokenMessage          = "Token saved to Keychain"
         } catch {
             tokenMessage          = "Could not save token: \(error.localizedDescription)"
         }
@@ -543,20 +726,20 @@ struct ContentView: View {
 
                 tokenIsStored         = false
                 tokenValidationStatus = .notChecked
-                tokenMessage          = "No token is stored in Keychain."
+                tokenMessage          = "No token is stored in Keychain"
 
                 return
             }
 
             guard isValidToken(storedToken) else {
 
-                tokenMessage = "The stored token has an invalid format. Replace it before continuing."
+                tokenMessage = "The stored token has an invalid format. Replace it before continuing"
                 
                 return
             }
 
             tokenInput   = storedToken
-            tokenMessage = "Stored token loaded into the secure field."
+            tokenMessage = "Stored token loaded into the secure field"
             focusedField = .token
 
         } catch {
@@ -577,7 +760,7 @@ struct ContentView: View {
             tokenInput = ""
             tokenIsStored         = false
             tokenValidationStatus = .notChecked
-            tokenMessage          = "Stored token deleted from Keychain."
+            tokenMessage          = "Stored token deleted from Keychain"
             focusedField = nil
 
         } catch {
@@ -600,7 +783,7 @@ struct ContentView: View {
 
               let catCount = catCountValue else {
 
-            preferencesResult = "Enter a food name and a positive whole number of cats."
+            preferencesResult = "Review Food, #Cats, and the Gender description"
             return
         }
 
@@ -615,13 +798,13 @@ struct ContentView: View {
         do {
             guard let storedToken = try TokenStore.load() else {
 
-                preferencesResult = "No app token is stored. Save the app token before submitting preferences."
+                preferencesResult = "No app token is stored. Save the app token before submitting preferences"
                 return
             }
 
             guard isValidToken(storedToken) else {
 
-                preferencesResult = "The stored token has an invalid format. Replace it before continuing."
+                preferencesResult = "The stored token has an invalid format. Replace it before continuing"
                 return
             }
 
@@ -634,7 +817,7 @@ struct ContentView: View {
 
         guard let url = URL(string: "https://plenact.com/api-dev/preferences.php") else {
 
-            preferencesResult = "Invalid preferences API URL."
+            preferencesResult = "Invalid preferences API URL"
             return
         }
 
@@ -650,7 +833,12 @@ struct ContentView: View {
 
         let submission = PreferencesSubmission(
             favoriteFood: favoriteFoodValue,
-            catCount:     catCount
+            catCount: catCount,
+            gender: genderInput.isEmpty ? nil : genderInput,
+            genderDescription: genderInput == GenderOption.selfDescribe.rawValue
+                ? genderDescriptionValue
+                : nil,
+            isExcited: isExcited
         )
 
         do {
@@ -660,7 +848,7 @@ struct ContentView: View {
 
             guard let httpResponse = response as? HTTPURLResponse else {
 
-                preferencesResult = "Failed: preferences response was not HTTP."
+                preferencesResult = "Failed: preferences response was not HTTP"
                 return
             }
 
@@ -676,45 +864,45 @@ struct ContentView: View {
 
                     guard result.saved else {
 
-                        preferencesResult = "The server did not confirm that preferences were saved."
+                        preferencesResult = "The server did not confirm that preferences were saved"
                         return
                     }
 
-                    preferencesResult = "Preferences saved to the database for this installation."
+                    preferencesResult = "Preferences saved to the database for this installation"
                     savedPreferences = submission
 
                 case 401:                                           /* Unauthorized */
                     tokenValidationStatus = .rejected
-                    preferencesResult     = "Authentication failed (HTTP 401). The stored app token was rejected."
+                    preferencesResult     = "Authentication failed (HTTP 401). The stored app token was rejected"
 
                 case 403:                                           /* Forbidden */
                     tokenValidationStatus = .forbidden
-                    preferencesResult     = "Access denied (HTTP 403). This endpoint requires the app token."
+                    preferencesResult     = "Access denied (HTTP 403). This endpoint requires the app token"
 
                 case 400, 413, 415, 422:                            /* Client errors */
-                    preferencesResult     = "The server rejected the preference values (HTTP \(httpResponse.statusCode))."
+                    preferencesResult     = "The server rejected the preference values (HTTP \(httpResponse.statusCode))"
 
                 case 500...599:                                     /* Server errors */
-                    preferencesResult     = "Server error (HTTP \(httpResponse.statusCode)). Try again later."
+                    preferencesResult     = "Server error (HTTP \(httpResponse.statusCode)). Try again later"
 
                 default:
-                    preferencesResult     = "Preferences request failed with HTTP \(httpResponse.statusCode)."
+                    preferencesResult     = "Preferences request failed with HTTP \(httpResponse.statusCode)"
             }
         } catch is DecodingError {
-            preferencesResult = "Could not decode the preferences response. Its JSON does not match the expected format."
+            preferencesResult = "Could not decode the preferences response. Its JSON does not match the expected format"
 
         } catch let error as URLError {
 
             switch error.code {
 
                 case .notConnectedToInternet, .networkConnectionLost:               /* Network unavailable */
-                    preferencesResult = "Network unavailable. Check the connection and try again."
+                    preferencesResult = "Network unavailable. Check the connection and try again"
 
                 case .timedOut:                                                     /* Request timed out */
-                    preferencesResult = "The preferences request timed out. Try again."
+                    preferencesResult = "The preferences request timed out. Try again"
 
                 case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:       /* Host unreachable */
-                    preferencesResult = "Could not reach the API host. Check the connection and try again."
+                    preferencesResult = "Could not reach the API host. Check the connection and try again"
 
                 default:
                     preferencesResult = "Network request failed: \(error.localizedDescription)"
@@ -746,14 +934,14 @@ struct ContentView: View {
         do {
             guard let storedToken = try TokenStore.load() else {
 
-                bootstrapResult = "No app token is stored. Save the app token before loading database data."
+                bootstrapResult = "No app token is stored. Save the app token before loading database data"
                 
                 return
             }
 
             guard isValidToken(storedToken) else {
 
-                bootstrapResult = "The stored token has an invalid format. Replace it before continuing."
+                bootstrapResult = "The stored token has an invalid format. Replace it before continuing"
                
                 return
             }
@@ -773,7 +961,7 @@ struct ContentView: View {
 
         ) else {
 
-            bootstrapResult = "Invalid bootstrap API URL."
+            bootstrapResult = "Invalid bootstrap API URL"
 
             return
         }
@@ -791,7 +979,7 @@ struct ContentView: View {
 
             guard let httpResponse = response as? HTTPURLResponse else {
 
-                bootstrapResult = "Failed: bootstrap response was not HTTP."
+                bootstrapResult = "Failed: bootstrap response was not HTTP"
 
                 return
             }
@@ -805,26 +993,26 @@ struct ContentView: View {
                 case 401:                                               /* HTTP 401: Unauthorized */                    
 
                     tokenValidationStatus = .rejected
-                    bootstrapResult = "Authentication failed (HTTP 401). The stored app token was rejected."
+                    bootstrapResult = "Authentication failed (HTTP 401). The stored app token was rejected"
                     
                     return
 
                 case 403:                                               /* HTTP 403: Forbidden */
 
                     tokenValidationStatus = .forbidden
-                    bootstrapResult = "Access denied (HTTP 403). This endpoint requires the app token."
+                    bootstrapResult = "Access denied (HTTP 403). This endpoint requires the app token"
                     
                     return
 
                 case 500...599:                                         /* HTTP 5xx: Server Error */
 
-                    bootstrapResult = "Server error (HTTP \(httpResponse.statusCode)). Try again later."
+                    bootstrapResult = "Server error (HTTP \(httpResponse.statusCode)). Try again later"
                     
                     return
 
                 default:
 
-                    bootstrapResult = "Bootstrap request failed with HTTP \(httpResponse.statusCode)."
+                    bootstrapResult = "Bootstrap request failed with HTTP \(httpResponse.statusCode)"
                     
                     return
 
@@ -839,21 +1027,29 @@ struct ContentView: View {
                 savedPreferences  = preferences                                     /* Save the loaded preferences            */
                 favoriteFoodInput = preferences.favoriteFood                        /* Populate the favorite food input field */
                 catCountInput     = String(preferences.catCount)                    /* Populate the cat count input field     */
-                preferencesResult = "Preferences loaded from the database."
+                genderInput       = preferences.gender ?? ""
+                isExcited         = preferences.isExcited
+
+                genderDescriptionInput = preferences.genderDescription ?? ""
+                preferencesResult      = "Preferences loaded from the database."
 
             } else {
 
-                savedPreferences  = nil                                             /* Clear the saved preferences            */
-                favoriteFoodInput = ""                                              /* Clear the favorite food input field    */                   
-                catCountInput     = ""                                              /* Clear the cat count input field        */
-                preferencesResult = "No saved preferences for this installation."   /* Clear the preferences input fields     */
+                savedPreferences       = nil                                             /* Clear the saved preferences            */
+                favoriteFoodInput      = ""                                              /* Clear the favorite food input field    */
+                catCountInput          = ""                                              /* Clear the cat count input field        */
+                genderInput            = ""
+                isExcited              = false
+
+                genderDescriptionInput = ""
+                preferencesResult      = "No saved preferences for this installation"   /* Clear the preferences input fields     */
             }
 
-            bootstrapResult = "Database data loaded successfully."
+            bootstrapResult = "Database data loaded successfully"
 
         } catch is DecodingError {
 
-            bootstrapResult = "Could not decode the bootstrap response. Its JSON does not match the expected format."
+            bootstrapResult = "Could not decode the bootstrap response. Its JSON does not match the expected format"
        
         } catch let error as URLError {
 
@@ -861,15 +1057,15 @@ struct ContentView: View {
 
                 case .notConnectedToInternet, .networkConnectionLost:
 
-                    bootstrapResult = "Network unavailable. Check the connection and try again."
+                    bootstrapResult = "Network unavailable. Check the connection and try again"
                 
                 case .timedOut:
                  
-                    bootstrapResult = "The bootstrap request timed out. Try again."
+                    bootstrapResult = "The bootstrap request timed out. Try again"
                
                 case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
                
-                    bootstrapResult = "Could not reach the API host. Check the connection and try again."
+                    bootstrapResult = "Could not reach the API host. Check the connection and try again"
               
                 default:
                
@@ -907,7 +1103,7 @@ struct ContentView: View {
             
         ) else {
             
-            result = "Invalid API URL."
+            result = "Invalid API URL"
             
             return
         }
@@ -926,7 +1122,7 @@ struct ContentView: View {
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 
-                result = "Failed: response was not HTTP."
+                result = "Failed: response was not HTTP"
                 
                 return
             }
@@ -934,7 +1130,7 @@ struct ContentView: View {
             // A completed transfer can still carry an HTTP error.
             guard httpResponse.statusCode == 200 else {
                 
-                result = "Server returned HTTP \(httpResponse.statusCode)."
+                result = "Server returned HTTP \(httpResponse.statusCode)"
                 
                 return
             }
@@ -943,11 +1139,11 @@ struct ContentView: View {
 
             if health.ok {
                 
-                result = "Success: \(health.service) responded."
+                result = "Success: \(health.service) responded"
                 
             } else {
                 
-                result = "Server responded, but reported ok = false."
+                result = "Server responded, but reported ok = false"
                 
             }
         } catch {

@@ -6,7 +6,7 @@ A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS
 
 - The app performs a foreground, user-triggered health check with loading feedback and error handling.
 - `TokenStore.swift` provides Keychain save, load, and delete operations. The app has secure token entry, local format validation, Keychain save/delete controls, and a stored-token indicator. Authenticated bootstrap retrieval has successfully displayed the live database configuration and notice on an iPhone. Saving a token does not validate it with the server.
-- The app includes Favorite Food and #Cats fields with validation and an authenticated save request. The migration and write endpoint have been deployed, and a save succeeded in both the Simulator and on a physical iPhone. Local `bootstrap.php` now also reads the optional preferences row; this readback change still needs to be deployed.
+- The app includes Favorite Food, #Cats, optional Gender, a conditional self-description, and an Excited checkbox with validation and authenticated save/load support. The existing Food/#Cats flow succeeded in the Simulator and on a physical iPhone. Migration `003` and the expanded Gender/Excited API contract are local source only; they still need applying and deployment.
 - The deployed server has a public health endpoint and app-token-protected authentication and database-bootstrap endpoints.
 - The database schema and initial configuration/notice data have been created and verified.
 - Installation-status uploads and a separate reader endpoint are still pending.
@@ -18,7 +18,7 @@ A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS
 3. Select an iPhone simulator or connected iPhone, then run.
 4. Tap **Test API**.
 5. Store the app token in Keychain, then tap **Load Database Data** to request the bootstrap response.
-6. After applying the preferences migration and deploying its endpoint, enter Favorite Food and a positive #Cats count, then tap **Save Preferences**.
+6. After applying the required migrations and deploying the preference endpoints, enter the profile values and tap **Save Preferences**. Tap **Load Database** to reload them.
 
 The `AppIcon` asset is configured for Debug and Release. App credentials will be entered at runtime and stored in Keychain; do not embed them in source or the app bundle.
 
@@ -32,12 +32,12 @@ Deploy the scripts from `Server/api-dev/` to `/home2/justirl2/public_html/plenac
 | --- | --- | --- |
 | `health.php` | Fixed service-health response | Public |
 | `auth-check.php` | Verify app-role authentication | App token |
-| `bootstrap.php` | Fetch configuration, notice, and optional preferences for this installation | App token; preferences read pending redeploy |
-| `preferences.php` | Save the latest preferences for this installation | App token, POST |
+| `bootstrap.php` | Fetch configuration, notice, and optional preferences for this installation | App token; expanded profile response pending redeploy |
+| `preferences.php` | Save the latest preferences for this installation | App token, POST; expanded profile request pending redeploy |
 
 The duplicate `Server/health.php` is an earlier baseline copy; use `Server/api-dev/health.php` for deployment.
 
-The server uses PHP 8.2 and Percona 5.7 (MySQL 5.7 compatible). The database user has SELECT, INSERT, and UPDATE privileges. Run schema changes through a separate administrative workflow. `Server/001_initial.sql` was already applied; do not rerun it against the existing database. The additive `Server/002_installation_preferences.sql` migration has been applied once to the development database; do not rerun it. Database timestamps represent UTC.
+The server uses PHP 8.2 and Percona 5.7 (MySQL 5.7 compatible). The database user has SELECT, INSERT, and UPDATE privileges. Run schema changes through a separate administrative workflow. `Server/001_initial.sql` was already applied; do not rerun it against the existing database. The additive `Server/002_installation_preferences.sql` migration has been applied once; do not rerun it. `Server/003_installation_preference_profile.sql` adds Gender and Excited fields and has not yet been applied. Database timestamps represent UTC.
 
 The PHP scripts resolve private configuration relative to their deployed directory. Local `Server/` is a deployment reference, not a runnable mirror of the hosting directory layout.
 
@@ -99,8 +99,8 @@ Bootstrap returned:
 
 `notice` may be null when no active notice exists.
 
-The local `bootstrap.php` source now also returns `preferences`: either `null` when no row exists or an object containing `favorite_food` and `cat_count`. Deploy the updated endpoint before expecting **Load Database Data** to populate the preference fields on a device.
+The local `bootstrap.php` source returns a nullable `preferences` object containing the saved profile fields. The expanded Gender/Excited response and request contracts must be deployed after migration `003` before testing those fields on a device.
 
 ## Next milestone
 
-Deploy the updated `Server/api-dev/bootstrap.php` to the development API directory. Then press **Load Database Data** on the Simulator and physical iPhone and confirm saved Favorite Food/#Cats values populate. If no row exists, the fields should clear and report no saved preferences. The write path has already succeeded on both devices; verify that a second submission updates the same row. Keep these preferences separate from `installation_status`. A separate restricted reader endpoint remains future work.
+Apply `Server/003_installation_preference_profile.sql` once, then deploy the updated `Server/api-dev/preferences.php` and `Server/api-dev/bootstrap.php`. Rebuild the app and test all Gender choices, the conditional self-description, and both Excited states on the Simulator and physical iPhone. Confirm existing Food/#Cats values remain unchanged and repeat a save to verify the same row updates. Keep profile preferences separate from `installation_status`; a separate restricted reader endpoint remains future work.

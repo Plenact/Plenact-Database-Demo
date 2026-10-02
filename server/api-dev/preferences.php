@@ -27,6 +27,14 @@ const API_TOKEN_PATTERN            = '/\A[A-Za-z0-9]{64}\z/'; /* 64-character to
 const BEARER_TOKEN_PATTERN         = '/\ABearer ([A-Za-z0-9]{64})\z/i'; /* Bearer header pattern                  */
 const MAX_REQUEST_BODY_BYTES       = 8192; /* Maximum request body size             */
 const MAX_FAVORITE_FOOD_CODEPOINTS = 255; /* Maximum food-name code points       */
+const MAX_GENDER_DESCRIPTION_CODEPOINTS = 100; /* Maximum self-description length */
+const GENDER_OPTIONS = [
+  'woman',
+  'man',
+  'non_binary',
+  'self_describe',
+  'prefer_not_to_say',
+];
 const MIN_CAT_COUNT                = 1; /* Minimum cat count                                     */
 const MAX_CAT_COUNT                = 4_294_967_295; /* Maximum cat count                                     */
 const PRIVATE_DIRECTORY_LEVELS     = 3; /* Private configuration path depth */
@@ -171,6 +179,40 @@ try {
     respond(422, ['error' => 'invalid_cat_count']);
   }
 
+  $gender = $payload['gender'] ?? null;
+  $genderDescription = $payload['gender_description'] ?? null;
+
+  if ($gender !== null
+      && (!is_string($gender) || !in_array($gender, GENDER_OPTIONS, true))) {
+    respond(422, ['error' => 'invalid_gender']);
+  }
+
+  if ($gender === 'self_describe') {
+    if (!is_string($genderDescription)) {
+      respond(422, ['error' => 'invalid_gender_description']);
+    }
+
+    $genderDescription = trim($genderDescription);
+    $genderDescriptionPattern = sprintf(
+      '/\A[^\x00-\x1F\x7F]{1,%d}\z/u',
+      MAX_GENDER_DESCRIPTION_CODEPOINTS
+    );
+
+    if (preg_match($genderDescriptionPattern, $genderDescription) !== 1) {
+      respond(422, ['error' => 'invalid_gender_description']);
+    }
+  } elseif ($genderDescription !== null && $genderDescription !== '') {
+    respond(422, ['error' => 'unexpected_gender_description']);
+  } else {
+    $genderDescription = null;
+  }
+
+  $isExcited = $payload['is_excited'] ?? false;
+
+  if (!is_bool($isExcited)) {
+    respond(422, ['error' => 'invalid_excited']);
+  }
+
 
   // -------------------------------------- MARK: - Database Access ----------------------------- //
 
@@ -209,24 +251,39 @@ try {
       installation_id,
       favorite_food,
       cat_count,
+      gender,
+      gender_description,
+      is_excited,
       updated_at
     ) VALUES (
       :installation_id,
       :favorite_food,
       :cat_count,
+      :gender,
+      :gender_description,
+      :is_excited,
       UTC_TIMESTAMP(6)
     )
     ON DUPLICATE KEY UPDATE
       favorite_food = :updated_favorite_food,
       cat_count = :updated_cat_count,
+      gender = :updated_gender,
+      gender_description = :updated_gender_description,
+      is_excited = :updated_is_excited,
       updated_at = UTC_TIMESTAMP(6)'
   );
   $statement->execute([
     'installation_id' => $auth['installation_id'],
     'favorite_food' => $favoriteFood,
     'cat_count' => $payload['cat_count'],
+    'gender' => $gender,
+    'gender_description' => $genderDescription,
+    'is_excited' => (int) $isExcited,
     'updated_favorite_food' => $favoriteFood,
     'updated_cat_count' => $payload['cat_count'],
+    'updated_gender' => $gender,
+    'updated_gender_description' => $genderDescription,
+    'updated_is_excited' => (int) $isExcited
   ]);
 
   respond(200, ['saved' => true]);

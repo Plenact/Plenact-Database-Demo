@@ -172,7 +172,7 @@ try {
   $notice = $statement->fetch();
 
   $statement = $pdo->prepare(
-    'SELECT favorite_food, cat_count
+    'SELECT favorite_food, cat_count, gender, gender_description, is_excited
      FROM installation_preferences
       WHERE installation_id = :installation_id'
   );
@@ -191,6 +191,9 @@ try {
     'preferences' => $preferences === false ? null : [
       'favorite_food' => $preferences['favorite_food'],
       'cat_count' => (int) $preferences['cat_count'],
+      'gender' => $preferences['gender'],
+      'gender_description' => $preferences['gender_description'],
+      'is_excited' => (bool) $preferences['is_excited'],
     ],
   ]);
 } catch (Throwable) {
