@@ -107,6 +107,14 @@ private enum ContentField: Hashable {
     case catCount           /* User's cat count input field                 */
 }
 
+///
+/// Sections in the installation preferences panel
+///
+private enum InstallationPreferencesTab: Hashable {
+    case preferences            /* Installation preferences section */
+    case revisions               /* Revisions section               */    
+}
+
 
 // --------------------------------------- MARK: - View ----------------------------------------- //
 
@@ -129,7 +137,10 @@ struct ContentView: View {
     @State private var bootstrapResult   = "Database data not loaded."    /* Latest bootstrap response feedback     */
     @State private var favoriteFoodInput = ""                             /* User's favorite food input field       */
     @State private var catCountInput     = ""                             /* User's cat count input field           */
-    @State private var preferencesResult = "Preferences not loaded."     /* Latest preferences feedback           */
+    @State private var preferencesResult = "Preferences not loaded."      /* Latest preferences feedback            */
+
+    @State private var selectedPreferencesTab = InstallationPreferencesTab.preferences  /* Currently selected tab in the installation preferences panel */
+
 
     // View State
     @State private var tokenIsStored: Bool?              = nil                                  /* nil means Keychain status is unknown  */
@@ -255,62 +266,80 @@ struct ContentView: View {
                 }
             }
 
-            GroupBox("Installation Preferences") {
+            GroupBox {
 
                 VStack(alignment: .leading, spacing: 12) {
 
-                    HStack {
-                        Text("Favorite Food:")
-                            .frame(width: 112, alignment: .leading)
+                    Picker("Installation Preferences Section", selection: $selectedPreferencesTab) {
 
-                        TextField("Enter a food", text: $favoriteFoodInput)
-                            .textFieldStyle(.roundedBorder)
-                            .textInputAutocapitalization(.words)
-                            .focused($focusedField, equals: .favoriteFood)
-                            .onChange(of: favoriteFoodInput) { _, _ in
-                                updatePreferencesEditStatus()
+                        Text("Preferences")
+                            .tag(InstallationPreferencesTab.preferences)
+
+                        Text("Revisions")
+                            .tag(InstallationPreferencesTab.revisions)
+                            .disabled(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    if selectedPreferencesTab == .preferences {
+                        
+                        VStack(alignment: .leading, spacing: 12) {
+
+                            HStack {
+                                Text("Favorite Food:")
+                                    .frame(width: 112, alignment: .leading)
+
+                                TextField("Enter a food", text: $favoriteFoodInput)
+                                    .textFieldStyle(.roundedBorder)
+                                    .textInputAutocapitalization(.words)
+                                    .focused($focusedField, equals: .favoriteFood)
+                                    .onChange(of: favoriteFoodInput) { _, _ in
+                                        updatePreferencesEditStatus()
+                                    }
                             }
-                    }
 
-                    if !favoriteFoodInput.isEmpty && !favoriteFoodIsValid {
+                            if !favoriteFoodInput.isEmpty && !favoriteFoodIsValid {
 
-                        Text("Enter a food name up to 255 characters.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack {
-                        Text("#Cats:")
-                            .frame(width: 112, alignment: .leading)
-
-                        TextField("Positive whole number", text: $catCountInput)
-                            .textFieldStyle(.roundedBorder)
-                            .keyboardType(.numberPad)
-                            .focused($focusedField, equals: .catCount)
-                            .onChange(of: catCountInput) { _, _ in
-                                updatePreferencesEditStatus()
+                                Text("Enter a food name up to 255 characters.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
                             }
-                    }
 
-                    if !catCountInput.isEmpty && catCountValue == nil {
+                            HStack {
+                                Text("#Cats:")
+                                    .frame(	width: 112, alignment: .leading)
 
-                        Text("Enter a positive whole number.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                                TextField("Positive whole number", text: $catCountInput)
+                                    .textFieldStyle(.roundedBorder)
+                                    .keyboardType(.numberPad)
+                                    .focused($focusedField, equals: .catCount)
+                                    .onChange(of: catCountInput) { _, _ in
+                                        updatePreferencesEditStatus()
+                                    }
+                            }
 
-                    Button("Save Preferences") {
+                            if !catCountInput.isEmpty && catCountValue == nil {
 
-                        Task {
-                            await savePreferences()
+                                Text("Enter a positive whole number.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Button("Save Preferences") {
+
+                                Task {
+                                    await savePreferences()
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!preferencesInputIsValid || isLoading)
+
+                            Text(preferencesResult)
+                                .font(.footnote)
+                                .textSelection(.enabled)
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!preferencesInputIsValid || isLoading)
-
-                    Text(preferencesResult)
-                        .font(.footnote)
-                        .textSelection(.enabled)
                 }
             }
         }
