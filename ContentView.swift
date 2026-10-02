@@ -179,7 +179,11 @@ struct ContentView: View {
                             .disabled(!tokenInputIsValid)
 
                         Button("Delete Token", role: .destructive, action: deleteToken)
-                            .disabled(tokenIsStored != true)
+                            .disabled(tokenIsStored != true || isLoading)
+
+                        Button("Recent Token", action: loadRecentToken)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(tokenIsStored != true || !tokenInput.isEmpty || isLoading)
                     }
 
                     Text(tokenStatusMessage)
@@ -500,6 +504,40 @@ struct ContentView: View {
 
 
     ///
+    /// @brief      Recall the stored app token into the secure input field
+    /// @details    Read from Keychain rather than keeping a second token copy
+    ///
+    private func loadRecentToken() {
+
+        do {
+            guard let storedToken = try TokenStore.load() else {
+
+                tokenIsStored         = false
+                tokenValidationStatus = .notChecked
+                tokenMessage          = "No token is stored in Keychain."
+
+                return
+            }
+
+            guard isValidToken(storedToken) else {
+
+                tokenMessage = "The stored token has an invalid format. Replace it before continuing."
+                
+                return
+            }
+
+            tokenInput   = storedToken
+            tokenMessage = "Stored token loaded into the secure field."
+            focusedField = .token
+
+        } catch {
+            tokenIsStored = nil
+            tokenMessage  = "Could not read token from Keychain: \(error.localizedDescription)"
+        }
+    }
+
+
+    ///
     /// @brief      Delete the stored app token from Keychain
     ///
     private func deleteToken() {
@@ -507,9 +545,11 @@ struct ContentView: View {
         do {
             try TokenStore.delete()
 
+            tokenInput = ""
             tokenIsStored         = false
             tokenValidationStatus = .notChecked
             tokenMessage          = "Stored token deleted from Keychain."
+            focusedField = nil
 
         } catch {
             tokenMessage          = "Could not delete token: \(error.localizedDescription)"
