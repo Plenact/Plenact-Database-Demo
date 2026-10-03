@@ -52,18 +52,15 @@ The app presents separate feedback for absent or unreadable Keychain data, authe
 
 Local sources:
 
-- Schema migration: `Server/002_installation_preferences.sql`
-- Profile fields migration: `Server/003_installation_preference_profile.sql`
+- Schema migration: `server/SQL/002_installation_preferences.sql`
+- Profile fields migration: `server/SQL/003_installation_preference_profile.sql`
 - API endpoint: `Server/api-dev/preferences.php`
 - Bootstrap readback: `Server/api-dev/bootstrap.php`
 
-Migration `002` has been applied once to the development database, and the Food/#Cats save request succeeded in the Simulator and on a physical iPhone. Migration `003` and the expanded Gender/Excited endpoint contracts are not yet applied or deployed.
+Migrations `002` and `003` have been applied to the development database. The Food/#Cats and expanded Gender/Excited save/load flows have been verified in the Simulator and on a physical iPhone.
 
-1. Apply migration `003` once through the separate schema-administration workflow. Do not rerun migrations `001` or `002`.
-2. Deploy the updated `preferences.php` and `bootstrap.php` to `/home2/justirl2/public_html/plenact/api-dev/`.
-3. Rebuild the app; confirm existing Food/#Cats values remain intact, Gender is unselected, and Excited is unchecked for existing rows.
-4. Test every Gender choice, require a bounded description for Self-describe, test Excited both checked and unchecked, then save and load the values on the Simulator and physical iPhone.
-5. Save changed values again and confirm the same row updates, not duplicates, and `updated_at` advances in UTC.
-6. Keep private configuration outside the public web root with restrictive permissions. Never copy populated configuration into this repository or an archive.
+1. Do not rerun migrations `001`, `002`, or `003`; they are already applied.
+2. The expanded `preferences.php` and `bootstrap.php` endpoints are deployed; keep Planner work separate from these preferences.
+3. Keep private configuration outside the public web root with restrictive permissions. Never copy populated configuration into this repository or an archive.
 
 No migration or deployment is performed by local code changes. The app-token scheme is for this controlled development demonstration; it is not a production user-authorization design.

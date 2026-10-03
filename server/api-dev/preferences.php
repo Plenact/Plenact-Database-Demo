@@ -8,7 +8,7 @@
  * @created    10/01/26
  * @last rev   10/01/26
  *
- * @notes      Apply 002_installation_preferences.sql and deploy this endpoint before hosted use.
+ * @notes      Apply schema changes from server/SQL/ through the separate administration workflow.
  *             Private authentication and database configuration stay outside the web root.
  *
  * @section    Opens

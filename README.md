@@ -6,7 +6,8 @@ A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS
 
 - The app performs a foreground, user-triggered health check with loading feedback and error handling.
 - `TokenStore.swift` provides Keychain save, load, and delete operations. The app has secure token entry, local format validation, Keychain save/delete controls, and a stored-token indicator. Authenticated bootstrap retrieval has successfully displayed the live database configuration and notice on an iPhone. Saving a token does not validate it with the server.
-- The app includes Favorite Food, #Cats, optional Gender, a conditional self-description, and an Excited checkbox with validation and authenticated save/load support. The existing Food/#Cats flow succeeded in the Simulator and on a physical iPhone. Migration `003` and the expanded Gender/Excited API contract are local source only; they still need applying and deployment.
+- The app includes Favorite Food, #Cats, optional Gender, a conditional self-description, and an Excited checkbox with authenticated save/load support. Their database round trip has been verified on Simulator and a physical iPhone.
+- The Planner tab now has Week Plan, Life Plan, and Notes editors backed by a Codable snapshot model. The Simulator build succeeds. The app GET/PUT client, `planner.php`, and migration `004` are local source only; the migration has not been applied and the endpoint has not been deployed. See [Doc/PLANNER.md](Doc/PLANNER.md) for the v1 contract.
 - The deployed server has a public health endpoint and app-token-protected authentication and database-bootstrap endpoints.
 - The database schema and initial configuration/notice data have been created and verified.
 - Installation-status uploads and a separate reader endpoint are still pending.
@@ -17,14 +18,15 @@ A native SwiftUI learning project connecting to a PHP API on Bluehost over HTTPS
 2. Select your signing team and an available bundle identifier.
 3. Select an iPhone simulator or connected iPhone, then run.
 4. Tap **Test API**.
-5. Store the app token in Keychain, then tap **Load Database Data** to request the bootstrap response.
-6. After applying the required migrations and deploying the preference endpoints, enter the profile values and tap **Save Preferences**. Tap **Load Database** to reload them.
+5. Store the app token in Keychain, then tap **Load Database** to request bootstrap data.
+6. Enter Lifestyle values and tap **Save Preferences**; tap **Load Database** to reload them.
+7. After applying migration `004` and deploying `planner.php`, open **Planner** to load, edit, and save the Planner snapshot.
 
 The `AppIcon` asset is configured for Debug and Release. App credentials will be entered at runtime and stored in Keychain; do not embed them in source or the app bundle.
 
 ## Server source and deployment
 
-The local filesystem directory is `Server/`; existing Git entries use `server/`. On this case-insensitive Mac these refer to the same directory. The casing has not been changed as part of credential housekeeping.
+The local filesystem directory is `Server/`; existing Git entries use `server/`. On this case-insensitive Mac these refer to the same directory. Keep the SQL files under the canonical Git path `server/SQL/` so case-sensitive checkouts keep them alongside the API sources.
 
 Deploy the scripts from `Server/api-dev/` to `/home2/justirl2/public_html/plenact/api-dev/`:
 
@@ -32,12 +34,13 @@ Deploy the scripts from `Server/api-dev/` to `/home2/justirl2/public_html/plenac
 | --- | --- | --- |
 | `health.php` | Fixed service-health response | Public |
 | `auth-check.php` | Verify app-role authentication | App token |
-| `bootstrap.php` | Fetch configuration, notice, and optional preferences for this installation | App token; expanded profile response pending redeploy |
-| `preferences.php` | Save the latest preferences for this installation | App token, POST; expanded profile request pending redeploy |
+| `bootstrap.php` | Fetch configuration, notice, and optional profile preferences | App token; profile readback verified |
+| `preferences.php` | Save the latest preferences for this installation | App token, POST; profile write verified |
+| `planner.php` | Load or replace the Planner snapshot for this installation | App token; GET/PUT, local source only |
 
 The duplicate `Server/health.php` is an earlier baseline copy; use `Server/api-dev/health.php` for deployment.
 
-The server uses PHP 8.2 and Percona 5.7 (MySQL 5.7 compatible). The database user has SELECT, INSERT, and UPDATE privileges. Run schema changes through a separate administrative workflow. `Server/001_initial.sql` was already applied; do not rerun it against the existing database. The additive `Server/002_installation_preferences.sql` migration has been applied once; do not rerun it. `Server/003_installation_preference_profile.sql` adds Gender and Excited fields and has not yet been applied. Database timestamps represent UTC.
+The server uses PHP 8.2 and Percona 5.7 (MySQL 5.7 compatible). The database user has SELECT, INSERT, and UPDATE privileges. Run schema changes through a separate administrative workflow. Migrations `001`, `002`, and `003` have been applied; do not rerun them. `server/SQL/004_installation_planner.sql` creates the Planner snapshot table and has not yet been applied. Database timestamps represent UTC.
 
 The PHP scripts resolve private configuration relative to their deployed directory. Local `Server/` is a deployment reference, not a runnable mirror of the hosting directory layout.
 
@@ -99,8 +102,8 @@ Bootstrap returned:
 
 `notice` may be null when no active notice exists.
 
-The local `bootstrap.php` source returns a nullable `preferences` object containing the saved profile fields. The expanded Gender/Excited response and request contracts must be deployed after migration `003` before testing those fields on a device.
+The installed profile API returns the saved Gender/Excited fields; that round trip has been verified. The local `planner.php` source returns or replaces a complete Planner snapshot, but it requires migration `004` and deployment before use on a device.
 
 ## Next milestone
 
-Apply `Server/003_installation_preference_profile.sql` once, then deploy the updated `Server/api-dev/preferences.php` and `Server/api-dev/bootstrap.php`. Rebuild the app and test all Gender choices, the conditional self-description, and both Excited states on the Simulator and physical iPhone. Confirm existing Food/#Cats values remain unchanged and repeat a save to verify the same row updates. Keep profile preferences separate from `installation_status`; a separate restricted reader endpoint remains future work.
+Apply `server/SQL/004_installation_planner.sql` once through the schema-administration workflow, then deploy `Server/api-dev/planner.php`. Rebuild the app and verify an empty Planner loads when no snapshot exists, all three Planner sections can be edited, and a saved snapshot reloads on Simulator and physical iPhone. The demo uses one server-configured installation ID and last-write-wins snapshots with no revision history. Keep Planner data separate from Lifestyle preferences and `installation_status`; a restricted external reader endpoint remains future work.

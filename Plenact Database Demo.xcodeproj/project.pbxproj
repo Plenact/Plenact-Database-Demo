@@ -11,6 +11,7 @@
 		545DAD55306D280F0031877E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545DAD52306D280F0031877E /* ContentView.swift */; };
 		545DAD56306D280F0031877E /* MyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545DAD53306D280F0031877E /* MyApp.swift */; };
 		545DAD58306D28CF0031877E /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545DAD57306D28CD0031877E /* TokenStore.swift */; };
+		B17A00000000000000000001 /* PlannerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B17A00000000000000000002 /* PlannerModels.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -19,6 +20,7 @@
 		545DAD52306D280F0031877E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		545DAD53306D280F0031877E /* MyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyApp.swift; sourceTree = "<group>"; };
 		545DAD57306D28CD0031877E /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
+		B17A00000000000000000002 /* PlannerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,6 +39,7 @@
 				545DAD51306D280F0031877E /* Assets.xcassets */,
 				545DAD52306D280F0031877E /* ContentView.swift */,
 				545DAD53306D280F0031877E /* MyApp.swift */,
+				B17A00000000000000000002 /* PlannerModels.swift */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -118,6 +121,7 @@
 				545DAD55306D280F0031877E /* ContentView.swift in Sources */,
 				545DAD56306D280F0031877E /* MyApp.swift in Sources */,
 				545DAD58306D28CF0031877E /* TokenStore.swift in Sources */,
+				B17A00000000000000000001 /* PlannerModels.swift in Sources */,
 			);
 		};
 /* End PBXSourcesBuildPhase section */

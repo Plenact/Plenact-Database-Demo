@@ -140,6 +140,7 @@ private enum TokenValidationStatus {
 ///
 private enum ContentField: Hashable {
     case token              /* User's token input field                     */
+    case plannerText        /* Planner text input field                     */
     case genderDescription  /* Self-described gender input field            */
     case favoriteFood       /* User's favorite food input field             */
     case catCount           /* User's cat count input field                 */
@@ -168,30 +169,42 @@ private enum InstallationPreferencesTab: Hashable {
 struct ContentView: View {
 
     // Variables
-    @State private var result            = "Ready to test."               /* Latest request feedback                */
-    @State private var isLoading         = false                          /* Request-in-progress flag               */
-    @State private var isKeyboardVisible = false                          /* On-screen keyboard visibility           */
-    @State private var tokenInput        = ""                             /* Token being entered, never logged      */
-    @State private var tokenMessage      = ""                             /* Keychain operation feedback            */
-    @State private var bootstrapResult   = "Database data not loaded."    /* Latest bootstrap response feedback     */
-    @State private var genderInput       = ""                             /* Optional gender category               */
-    @State private var genderDescriptionInput = ""                        /* Descrip for the self-describe choice   */
-    @State private var favoriteFoodInput = ""                             /* User's favorite food input field       */
-    @State private var catCountInput     = ""                             /* User's cat count input field           */
-    @State private var isExcited          = false                         /* Whether the user is excited            */
-    @State private var preferencesResult = "Preferences not loaded."      /* Latest preferences feedback            */
+    @State private var result                 = "Ready to test"             /* Latest request feedback                */
+    @State private var isLoading              = false                       /* Request-in-progress flag               */
+    @State private var isKeyboardVisible      = false                       /* On-screen keyboard visibility          */
+    @State private var tokenInput             = ""                          /* Token being entered, never logged      */
+    @State private var tokenMessage           = ""                          /* Keychain operation feedback            */
+    @State private var bootstrapResult        = "Database data not loaded"  /* Latest bootstrap response feedback     */
+    @State private var genderInput            = ""                          /* Optional gender category               */
+    @State private var genderDescriptionInput = ""                          /* Descrip for the self-describe choice   */
+    @State private var favoriteFoodInput      = ""                          /* User's favorite food input field       */
+    @State private var catCountInput          = ""                          /* User's cat count input field           */
+    @State private var isExcited              = false                       /* Whether the user is excited            */
+    @State private var preferencesResult      = "Preferences not loaded"    /* Latest preferences feedback            */
 
     @State private var selectedPreferencesTab = InstallationPreferencesTab.lifestyle
 
 
     // View State
-    @State private var tokenIsStored: Bool?              = nil                                  /* nil means Keychain status is unknown  */
-    @State private var tokenValidationStatus             = TokenValidationStatus.notChecked     /* Initial token validation status       */
-    @State private var bootstrapData: BootstrapResponse? = nil                                  /* Latest bootstrap response             */
-    @State private var savedPreferences: PreferencesSubmission? = nil                           /* Last preferences loaded or saved       */
+    @State private var tokenValidationStatus   = TokenValidationStatus.notChecked  /* Initial token validation status */
+    @State private var plannerIsLoaded         = false
+    @State private var plannerIsLoading        = false
+    @State private var plannerHasSnapshot      = false
+    @State private var plannerResult           = "Planner not loaded"
+    @State private var selectedPlannerSection  = PlannerSection.weekPlan
+    @State private var selectedPlannerDayIndex = 0
+
+    @State private var tokenIsStored:        Bool?  = nil                    /* nil means Keychain status is unknown  */
+    @State private var plannerCreatedAt:     String?
+    @State private var plannerUpdatedAt:     String?
+    @State private var savedPlannerDocument: PlannerDocument?
+    @State private var bootstrapData:        BootstrapResponse?     = nil    /* Latest bootstrap response             */
+    @State private var savedPreferences:     PreferencesSubmission? = nil    /* Last preferences loaded or saved      */
+
+    @State private var plannerDocument = PlannerDocument.empty()
 
     // Focus State
-    @FocusState private var focusedField: ContentField?                                        /* Currently focused input field         */
+    @FocusState private var focusedField: ContentField?                      /* Currently focused input field         */
 
 
     ///
@@ -217,7 +230,7 @@ struct ContentView: View {
 
                     if !tokenInput.isEmpty && !tokenInputIsValid {
 
-                        Text("Enter exactly 64 ASCII letters or digits.")
+                        Text("Enter exactly 64 ASCII letters or digits")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -303,7 +316,7 @@ struct ContentView: View {
                                     .textSelection(.enabled)
 
                             } else {
-                                Text("No active notice.")
+                                Text("No active notice")
                                     .font(.footnote)
                             }
                         }
@@ -336,7 +349,18 @@ struct ContentView: View {
                         )
 
                         Button {
+                            guard selectedPreferencesTab != .planner else {
+                                return
+                            }
+
                             selectedPreferencesTab = .planner
+
+                            if !plannerIsLoaded {
+                                Task {
+                                    await loadPlanner()
+                                }
+                            }
+
                         } label: {
 
                             Text("Planner")
@@ -349,7 +373,7 @@ struct ContentView: View {
                                 }
                         }
                         .buttonStyle(.plain)
-                        .disabled(bootstrapData == nil || isLoading)
+                        .disabled(bootstrapData == nil || isLoading || plannerIsLoading)
                         .accessibilityValue(
                             selectedPreferencesTab == .planner ? "Selected" : "Not selected"
                         )
@@ -402,7 +426,7 @@ struct ContentView: View {
 
                                 if !genderDescriptionIsValid {
 
-                                    Text("Enter a description up to 100 characters.")
+                                    Text("Enter a description up to 100 character")
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
                                 }
@@ -423,7 +447,7 @@ struct ContentView: View {
 
                             if !favoriteFoodInput.isEmpty && !favoriteFoodIsValid {
 
-                                Text("Enter a food name up to 255 characters.")
+                                Text("Enter a food name up to 255 characters")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
@@ -443,7 +467,7 @@ struct ContentView: View {
 
                             if !catCountInput.isEmpty && catCountValue == nil {
 
-                                Text("Enter a positive whole number.")
+                                Text("Enter a positive whole number")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
@@ -481,9 +505,7 @@ struct ContentView: View {
                                 .textSelection(.enabled)
                         }
                     } else {
-                        Text("Planner content will be added in a later stage.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        plannerEditor
                     }
 
                     Spacer(minLength: 0)
@@ -515,6 +537,443 @@ struct ContentView: View {
         )) { _ in
             isKeyboardVisible = false
         }
+        .onChange(of: plannerDocument) { _, _ in
+            updatePlannerDraftStatus()
+        }
+    }
+
+
+    ///
+    /// @brief      Render Planner section navigation, synchronization, and content
+    ///
+    private var plannerEditor: some View {
+
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+
+                Picker("Planner Section", selection: $selectedPlannerSection) {
+                    ForEach(PlannerSection.allCases) { section in
+                        Text(section.title).tag(section)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                HStack {
+                    Button("Load Planner") {
+                        Task {
+                            await loadPlanner()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(plannerHasUnsavedChanges || plannerIsLoading || isLoading)
+
+                    Button("Save Planner") {
+                        Task {
+                            await savePlanner()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        !plannerIsLoaded
+                            || plannerDocument.validationMessage != nil
+                            || !plannerHasUnsavedChanges
+                            || plannerIsLoading
+                            || isLoading
+                    )
+                }
+
+                Text(plannerDocument.validationMessage ?? plannerResult)
+                    .font(.footnote)
+                    .foregroundStyle(
+                        plannerDocument.validationMessage == nil ? Color.secondary : Color.red
+                    )
+                    .textSelection(.enabled)
+
+                if let plannerUpdatedAt {
+                    Text("Last saved (UTC): \(plannerUpdatedAt)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                if plannerIsLoading {
+                    ProgressView("Synchronizing Planner…")
+                } else if !plannerIsLoaded {
+                    Text("Load Planner to begin")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    switch selectedPlannerSection {
+                        case .weekPlan:
+                            plannerWeekPlanEditor
+                        case .lifePlan:
+                            plannerLifePlanEditor
+                        case .notes:
+                            plannerNotesEditor
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+        }
+    }
+
+
+    ///
+    /// @brief      Edit the seven ordered day slots and their nested data
+    ///
+    private var plannerWeekPlanEditor: some View {
+
+        VStack(alignment: .leading, spacing: 12) {
+
+            Picker("Day", selection: $selectedPlannerDayIndex) {
+
+                ForEach(0..<7, id: \.self) { dayIndex in
+
+                    Text("Day \(dayIndex + 1)").tag(dayIndex)
+                }
+            }
+            .pickerStyle(.menu)
+
+            HStack {
+
+                Text("Goals").font(.headline)
+
+                Spacer()
+
+                Button("Add Goal", systemImage: "plus", action: addDayGoal)
+            }
+
+            ForEach($plannerDocument.weekPlan.days[selectedPlannerDayIndex].goals) { $goal in
+
+                VStack(alignment: .leading, spacing: 8) {
+                    
+                    TextField("Goal description", text: $goal.description)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .plannerText)
+
+                    HStack {
+
+                        Stepper("Priority: \(goal.priority)", value: $goal.priority)
+
+                        Button(role: .destructive) {
+                            removeDayGoal(id: goal.id)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .accessibilityLabel("Remove goal")
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            HStack {
+                Text("Schedules").font(.headline)
+                Spacer()
+                Button("Add Schedule", systemImage: "plus", action: addDaySchedule)
+            }
+
+            ForEach($plannerDocument.weekPlan.days[selectedPlannerDayIndex].schedules) { $schedule in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Schedule")
+                        Spacer()
+                        Button(role: .destructive) {
+                            removeDaySchedule(id: schedule.id)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .accessibilityLabel("Remove schedule")
+                    }
+
+                    ForEach($schedule.events) { $event in
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField("Event description", text: $event.description)
+                                .textFieldStyle(.roundedBorder)
+                                .focused($focusedField, equals: .plannerText)
+
+                            HStack {
+                                Stepper(
+                                    "Time: \(plannerTimeLabel(event.timeOfDayMinutes))",
+                                    value: $event.timeOfDayMinutes,
+                                    in: 0...1439,
+                                    step: 15
+                                )
+
+                                Button(role: .destructive) {
+                                    removePlannerEvent(id: event.id, scheduleID: schedule.id)
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .accessibilityLabel("Remove event")
+                            }
+                        }
+                    }
+
+                    Button("Add Event", systemImage: "plus") {
+                        addPlannerEvent(toSchedule: schedule.id)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            HStack {
+                Text("Cards").font(.headline)
+                Spacer()
+                Button("Add Card", systemImage: "plus", action: addDayCard)
+            }
+
+            ForEach($plannerDocument.weekPlan.days[selectedPlannerDayIndex].cards) { $card in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        TextField("Card title", text: $card.title)
+                            .textFieldStyle(.roundedBorder)
+                            .focused($focusedField, equals: .plannerText)
+
+                        Button(role: .destructive) {
+                            removeDayCard(id: card.id)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .accessibilityLabel("Remove card")
+                    }
+
+                    TextField("Card name", text: $card.name)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .plannerText)
+
+                    Stepper("Value: \(card.value)", value: $card.value)
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+
+    ///
+    /// @brief      Edit independent Life Plan goals and milestones
+    ///
+    private var plannerLifePlanEditor: some View {
+
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Goals").font(.headline)
+                Spacer()
+                Button("Add Goal", systemImage: "plus", action: addLifeGoal)
+            }
+
+            ForEach($plannerDocument.lifePlan.goals) { $goal in
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Goal description", text: $goal.description)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .plannerText)
+
+                    HStack {
+                        Stepper("Priority: \(goal.priority)", value: $goal.priority)
+                        Button(role: .destructive) {
+                            removeLifeGoal(id: goal.id)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .accessibilityLabel("Remove Life Plan goal")
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            HStack {
+                Text("Milestones").font(.headline)
+                Spacer()
+                Button("Add Milestone", systemImage: "plus", action: addMilestone)
+            }
+
+            ForEach($plannerDocument.lifePlan.milestones) { $milestone in
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Milestone description", text: $milestone.description)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .plannerText)
+
+                    TextField("Category", text: $milestone.category)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .plannerText)
+
+                    TextField("Notes", text: $milestone.notes, axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .plannerText)
+
+                    Button("Remove Milestone", role: .destructive) {
+                        removeMilestone(id: milestone.id)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+
+    ///
+    /// @brief      Edit independent Planner notes
+    ///
+    private var plannerNotesEditor: some View {
+
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Notes").font(.headline)
+                Spacer()
+                Button("Add Note", systemImage: "plus", action: addPlannerNote)
+            }
+
+            ForEach($plannerDocument.notes) { $note in
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Note text", text: $note.text, axis: .vertical)
+                        .lineLimit(2...6)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .plannerText)
+
+                    Button("Remove Note", role: .destructive) {
+                        removePlannerNote(id: note.id)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+
+    ///
+    /// @brief      Report whether the current Planner differs from its saved baseline
+    /// @return     (Bool) true when local edits are not yet stored
+    ///
+    private var plannerHasUnsavedChanges: Bool {
+
+        guard plannerIsLoaded, let savedPlannerDocument else {
+            return false
+        }
+
+        return plannerDocument != savedPlannerDocument
+    }
+
+
+    ///
+    /// @brief      Reconcile the status message with local edits and the saved snapshot
+    ///
+    private func updatePlannerDraftStatus() {
+
+        guard plannerIsLoaded else {
+            return
+        }
+
+        if plannerHasUnsavedChanges {
+            plannerResult = plannerDocument.validationMessage ?? "Unsaved Planner changes"
+        } else if plannerHasSnapshot {
+            plannerResult = "Planner loaded from the database"
+        } else {
+            plannerResult = "No saved Planner yet"
+        }
+    }
+
+
+    ///
+    /// @brief      Format minutes after midnight as a readable time label
+    /// @param[in]  minutesAfterMidnight   Time offset from midnight
+    /// @return     (String) 24-hour HH:mm label
+    ///
+    private func plannerTimeLabel(_ minutesAfterMidnight: Int) -> String {
+
+        String(
+            format: "%02d:%02d",
+            minutesAfterMidnight / 60,
+            minutesAfterMidnight % 60
+        )
+    }
+
+
+    ///
+    /// @brief      Add a goal to the selected Week Plan day
+    ///
+    private func addDayGoal() {
+
+        plannerDocument.weekPlan.days[selectedPlannerDayIndex].goals.append(
+            PlannerGoal(id: plannerDocument.nextItemID, description: "", priority: 0)
+        )
+    }
+
+    private func removeDayGoal(id: Int) {
+        plannerDocument.weekPlan.days[selectedPlannerDayIndex].goals.removeAll { $0.id == id }
+    }
+
+    private func addDaySchedule() {
+        plannerDocument.weekPlan.days[selectedPlannerDayIndex].schedules.append(
+            PlannerSchedule(id: plannerDocument.nextItemID, events: [])
+        )
+    }
+
+    private func removeDaySchedule(id: Int) {
+        plannerDocument.weekPlan.days[selectedPlannerDayIndex].schedules.removeAll { $0.id == id }
+    }
+
+    private func addPlannerEvent(toSchedule scheduleID: Int) {
+        guard let scheduleIndex = plannerDocument.weekPlan.days[selectedPlannerDayIndex]
+            .schedules.firstIndex(where: { $0.id == scheduleID }) else {
+            return
+        }
+
+        plannerDocument.weekPlan.days[selectedPlannerDayIndex].schedules[scheduleIndex].events.append(
+            PlannerEvent(
+                id: plannerDocument.nextItemID,
+                timeOfDayMinutes: 540,
+                description: ""
+            )
+        )
+    }
+
+    private func removePlannerEvent(id: Int, scheduleID: Int) {
+        guard let scheduleIndex = plannerDocument.weekPlan.days[selectedPlannerDayIndex]
+            .schedules.firstIndex(where: { $0.id == scheduleID }) else {
+            return
+        }
+
+        plannerDocument.weekPlan.days[selectedPlannerDayIndex].schedules[scheduleIndex].events.removeAll {
+            $0.id == id
+        }
+    }
+
+    private func addDayCard() {
+        plannerDocument.weekPlan.days[selectedPlannerDayIndex].cards.append(
+            PlannerCard(id: plannerDocument.nextItemID, title: "", value: 0, name: "")
+        )
+    }
+
+    private func removeDayCard(id: Int) {
+        plannerDocument.weekPlan.days[selectedPlannerDayIndex].cards.removeAll { $0.id == id }
+    }
+
+    private func addLifeGoal() {
+        plannerDocument.lifePlan.goals.append(
+            PlannerGoal(id: plannerDocument.nextItemID, description: "", priority: 0)
+        )
+    }
+
+    private func removeLifeGoal(id: Int) {
+        plannerDocument.lifePlan.goals.removeAll { $0.id == id }
+    }
+
+    private func addMilestone() {
+        plannerDocument.lifePlan.milestones.append(
+            PlannerMilestone(id: plannerDocument.nextItemID, description: "", category: "", notes: "")
+        )
+    }
+
+    private func removeMilestone(id: Int) {
+        plannerDocument.lifePlan.milestones.removeAll { $0.id == id }
+    }
+
+    private func addPlannerNote() {
+        plannerDocument.notes.append(PlannerNote(id: plannerDocument.nextItemID, text: ""))
+    }
+
+    private func removePlannerNote(id: Int) {
+        plannerDocument.notes.removeAll { $0.id == id }
     }
 
 
@@ -792,6 +1251,273 @@ struct ContentView: View {
 
 
     ///
+    /// @fcn        ContentView.loadPlanner
+    /// @brief      Load the current Planner snapshot for this demo installation
+    /// @details    Read the app token from Keychain and fetch one JSON snapshot
+    ///
+    /// @return     (Void) replaces the local Planner with the saved snapshot or an empty default
+    /// @post       plannerIsLoaded indicates whether a valid server response was received
+    ///
+    private func loadPlanner() async {
+
+        guard !plannerHasUnsavedChanges else {
+            plannerResult = "Save or discard local Planner changes before reloading"
+            return
+        }
+
+        plannerIsLoading = true
+        plannerResult = "Loading Planner"
+        defer { plannerIsLoading = false }
+
+        let token: String
+
+        do {
+            guard let storedToken = try TokenStore.load() else {
+                plannerResult = "No app token is stored. Save the app token before loading Planner"
+                return
+            }
+
+            guard isValidToken(storedToken) else {
+                plannerResult = "The stored token has an invalid format. Replace it before continuing"
+                return
+            }
+
+            token = storedToken
+        } catch {
+            plannerResult = "Could not read the app token from Keychain: \(error.localizedDescription)"
+            return
+        }
+
+        guard let url = URL(string: "https://plenact.com/api-dev/planner.php") else {
+            plannerResult = "Invalid Planner API URL"
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                plannerResult = "Failed: Planner response was not HTTP"
+                return
+            }
+
+            switch httpResponse.statusCode {
+                case 200:
+                    tokenValidationStatus = .accepted
+
+                case 401:
+                    tokenValidationStatus = .rejected
+                    plannerResult = "Authentication failed (HTTP 401). The stored app token was rejected"
+                    return
+
+                case 403:
+                    tokenValidationStatus = .forbidden
+                    plannerResult = "Access denied (HTTP 403). This endpoint requires the app token"
+                    return
+
+                case 404:
+                    plannerResult = "Planner endpoint not found (HTTP 404)"
+                    return
+
+                case 500...599:
+                    plannerResult = "Server error (HTTP \(httpResponse.statusCode)). Try again later"
+                    return
+
+                default:
+                    plannerResult = "Planner request failed with HTTP \(httpResponse.statusCode)"
+                    return
+            }
+
+            let responseBody = try JSONDecoder().decode(PlannerLoadResponse.self, from: data)
+
+            if let loadedPlanner = responseBody.planner {
+                guard loadedPlanner.validationMessage == nil else {
+                    plannerResult = loadedPlanner.validationMessage ?? "The saved Planner is invalid"
+                    return
+                }
+
+                plannerDocument = loadedPlanner
+                savedPlannerDocument = loadedPlanner
+                plannerHasSnapshot = true
+                plannerCreatedAt = responseBody.createdAt
+                plannerUpdatedAt = responseBody.updatedAt
+                plannerResult = "Planner loaded from the database"
+            } else {
+                let emptyPlanner = PlannerDocument.empty()
+                plannerDocument = emptyPlanner
+                savedPlannerDocument = emptyPlanner
+                plannerHasSnapshot = false
+                plannerCreatedAt = nil
+                plannerUpdatedAt = nil
+                plannerResult = "No saved Planner yet. Start a plan and save it"
+            }
+
+            selectedPlannerDayIndex = 0
+            plannerIsLoaded = true
+        } catch is DecodingError {
+            plannerResult = "Could not decode the Planner response. Its JSON does not match the expected format"
+        } catch let error as URLError {
+            switch error.code {
+                case .notConnectedToInternet, .networkConnectionLost:
+                    plannerResult = "Network unavailable. Check the connection and try again"
+
+                case .timedOut:
+                    plannerResult = "The Planner request timed out. Try again"
+
+                case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                    plannerResult = "Could not reach the API host. Check the connection and try again"
+
+                default:
+                    plannerResult = "Network request failed: \(error.localizedDescription)"
+            }
+        } catch {
+            plannerResult = "Planner request failed: \(error.localizedDescription)"
+        }
+    }
+
+
+    ///
+    /// @fcn        ContentView.savePlanner
+    /// @brief      Replace the saved Planner snapshot for this demo installation
+    /// @details    Validate the full document locally and send an authenticated PUT request
+    ///
+    /// @return     (Void) updates Planner status and server timestamps after confirmation
+    ///
+    private func savePlanner() async {
+
+        guard plannerIsLoaded else {
+            plannerResult = "Load Planner before saving"
+            return
+        }
+
+        if let validationMessage = plannerDocument.validationMessage {
+            plannerResult = validationMessage
+            return
+        }
+
+        plannerIsLoading = true
+        plannerResult = "Saving Planner…"
+        defer { plannerIsLoading = false }
+
+        let token: String
+
+        do {
+            guard let storedToken = try TokenStore.load() else {
+                plannerResult = "No app token is stored. Save the app token before saving Planner"
+                return
+            }
+
+            guard isValidToken(storedToken) else {
+                plannerResult = "The stored token has an invalid format. Replace it before continuing"
+                return
+            }
+
+            token = storedToken
+        } catch {
+            plannerResult = "Could not read the app token from Keychain: \(error.localizedDescription)"
+            return
+        }
+
+        guard let url = URL(string: "https://plenact.com/api-dev/planner.php") else {
+            plannerResult = "Invalid Planner API URL"
+            return
+        }
+
+        var request = URLRequest(url: url)
+
+        request.httpMethod      = "PUT"
+        request.timeoutInterval = 20
+        request.cachePolicy     = .reloadIgnoringLocalCacheData
+
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)",  forHTTPHeaderField: "Authorization")
+
+        do {
+            request.httpBody = try JSONEncoder().encode(plannerDocument)
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                plannerResult = "Failed: Planner response was not HTTP"
+                return
+            }
+
+            switch httpResponse.statusCode {
+                case 200:
+                    tokenValidationStatus = .accepted
+
+                case 401:
+                    tokenValidationStatus = .rejected
+                    plannerResult = "Authentication failed (HTTP 401). The stored app token was rejected"
+                    return
+
+                case 403:
+                    tokenValidationStatus = .forbidden
+                    plannerResult = "Access denied (HTTP 403). This endpoint requires the app token"
+                    return
+
+                case 404:
+                    plannerResult = "Planner endpoint not found (HTTP 404)"
+                    return
+
+                case 413, 422:
+                    plannerResult = "The server rejected this Planner document (HTTP \(httpResponse.statusCode))"
+                    return
+
+                case 500...599:
+                    plannerResult = "Server error (HTTP \(httpResponse.statusCode)). Try again later"
+                    return
+
+                default:
+                    plannerResult = "Planner request failed with HTTP \(httpResponse.statusCode)"
+                    return
+            }
+
+            let saveResponse = try JSONDecoder().decode(PlannerSaveResponse.self, from: data)
+
+            guard saveResponse.saved else {
+                plannerResult = "The server did not confirm that Planner was saved"
+                return
+            }
+
+            savedPlannerDocument = plannerDocument
+            plannerHasSnapshot = true
+            plannerCreatedAt = saveResponse.createdAt
+            plannerUpdatedAt = saveResponse.updatedAt
+            plannerResult = "Planner saved to the database"
+        } catch is EncodingError {
+            plannerResult = "Could not encode the Planner document as JSON"
+        } catch is DecodingError {
+            plannerResult = "Could not decode the Planner response. Its JSON does not match the expected format"
+        } catch let error as URLError {
+            switch error.code {
+                case .notConnectedToInternet, .networkConnectionLost:
+                    plannerResult = "Network unavailable. Check the connection and try again"
+
+                case .timedOut:
+                    plannerResult = "The Planner request timed out. Try again"
+
+                case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                    plannerResult = "Could not reach the API host. Check the connection and try again"
+
+                default:
+                    plannerResult = "Network request failed: \(error.localizedDescription)"
+            }
+        } catch {
+            plannerResult = "Planner request failed: \(error.localizedDescription)"
+        }
+    }
+
+
+    ///
     /// @fcn        ContentView.savePreferences
     /// @brief      Submit validated installation preferences to the protected API
     /// @details    The server associates the update with its configured installation ID
@@ -1054,7 +1780,7 @@ struct ContentView: View {
                 isExcited         = preferences.isExcited
 
                 genderDescriptionInput = preferences.genderDescription ?? ""
-                preferencesResult      = "Preferences loaded from the database."
+                preferencesResult      = "Preferences loaded from the database"
 
             } else {
 
